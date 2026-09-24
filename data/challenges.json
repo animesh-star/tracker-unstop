@@ -1,0 +1,383 @@
+{
+  "challenges": [
+    {
+      "id": 1789449575898,
+      "day": 1,
+      "title": "Day 1 Coding Challenge",
+      "link": "https://unstop.com/practice/coding",
+      "status": "solved",
+      "reminded_at": "2026-09-15T11:40:04.792465+05:30",
+      "solved_at": "2026-09-15T12:46:58.384486+05:30",
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575900,
+      "day": 2,
+      "title": "Day 2 Coding Challenge",
+      "link": "https://unstop.com/code/practice/660826",
+      "status": "solved",
+      "reminded_at": "2026-09-15T08:55:01.663Z",
+      "solved_at": "2026-09-23T17:31:06.151285+05:30",
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575901,
+      "day": 3,
+      "title": "Day 3: Two Pointers & Sliding Window Problem",
+      "link": "https://unstop.com/practice/coding",
+      "status": "solved",
+      "reminded_at": null,
+      "solved_at": "2026-09-21T11:06:23.502735+05:30",
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575902,
+      "day": 4,
+      "title": "Day 4: Prefix Sums & Hash Map Counting",
+      "link": "https://unstop.com/practice/coding",
+      "status": "solved",
+      "reminded_at": null,
+      "solved_at": "2026-09-24T01:05:09.770125+05:30",
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575903,
+      "day": 5,
+      "title": "Day 5: Matrix Manipulation & 2D Grid Traversal",
+      "link": "https://unstop.com/practice/coding",
+      "status": "solved",
+      "reminded_at": null,
+      "solved_at": "2026-09-25T00:48:53.125766+05:30",
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575904,
+      "day": 6,
+      "title": "Day 6: Stack Operations & Valid Parentheses",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575905,
+      "day": 7,
+      "title": "Day 7: Queue Design & Monotonic Stack",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575906,
+      "day": 8,
+      "title": "Day 8: Linked List Inversion & Cycle Detection",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575907,
+      "day": 9,
+      "title": "Day 9: Fast & Slow Pointers (Middle of Linked List)",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575908,
+      "day": 10,
+      "title": "Day 10: Recursion & Subsets / Combinations",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575909,
+      "day": 11,
+      "title": "Day 11: Binary Search on Sorted Arrays",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575910,
+      "day": 12,
+      "title": "Day 12: Binary Search on Answer Space (Aggressive Cows)",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575911,
+      "day": 13,
+      "title": "Day 13: Sorting Algorithms & Custom Comparators",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575912,
+      "day": 14,
+      "title": "Day 14: Bit Manipulation & Single Number Queries",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575913,
+      "day": 15,
+      "title": "Day 15: Binary Tree Traversal (Inorder, Preorder, Postorder)",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575914,
+      "day": 16,
+      "title": "Day 16: Binary Search Tree (BST) Insertion & Validation",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575915,
+      "day": 17,
+      "title": "Day 17: Lowest Common Ancestor & Tree Maximum Path Sum",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575916,
+      "day": 18,
+      "title": "Day 18: Heap / Priority Queue (Top K Frequent Elements)",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575917,
+      "day": 19,
+      "title": "Day 19: Greedy Choice & Activity Selection / Intervals",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575918,
+      "day": 20,
+      "title": "Day 20: Graph Representation & Breadth First Search (BFS)",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575919,
+      "day": 21,
+      "title": "Day 21: Depth First Search (DFS) & Connected Components",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575920,
+      "day": 22,
+      "title": "Day 22: Topological Sorting & Directed Acyclic Graphs",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575921,
+      "day": 23,
+      "title": "Day 23: Shortest Path on Weighted Graphs (Dijkstra)",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575922,
+      "day": 24,
+      "title": "Day 24: Dynamic Programming: 1D Fibonacci & House Robber",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575923,
+      "day": 25,
+      "title": "Day 25: 0/1 Knapsack & Partition Equal Subset Sum",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575924,
+      "day": 26,
+      "title": "Day 26: Longest Common Subsequence & Edit Distance",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575925,
+      "day": 27,
+      "title": "Day 27: Dynamic Programming on Grids (Unique Paths)",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575926,
+      "day": 28,
+      "title": "Day 28: Trie (Prefix Tree) Search & Autocomplete",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575927,
+      "day": 29,
+      "title": "Day 29: Union-Find (Disjoint Set Union) for Cycles",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    },
+    {
+      "id": 1789449575928,
+      "day": 30,
+      "title": "Day 30: Grand Finale: 30-Day Mastery Mock Challenge",
+      "link": "https://unstop.com/practice/coding",
+      "status": "upcoming",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z"
+    }
+  ],
+  "push_subscriptions": [
+    {
+      "endpoint": "https://fcm.googleapis.com/fcm/send/cRkeNrviBAg:APA91bEMoZQUyrt1RI_O3LfgTmkGxHupPtP6y8-lBu-2Aqy4zTZIaCW_6d-eWAVnkADND-RluZS8wejJi3PKDzC-vC6jIT4C1gWETS-cFgPMIiFnhXGZVAEfP1BA5SbyZRtPXzaKua8H",
+      "expirationTime": null,
+      "keys": {
+        "p256dh": "BB7lNqqEy3iuf_Tn5_KwGbxgmrf0Jmk3GA_8duOpfKu5BmI841NRHmr8qoc7GAdNdQgIbIu03FuiyQ6mTBi1Oug",
+        "auth": "MDcVVaJ0eTwiojxwGac4XA"
+      }
+    },
+    {
+      "endpoint": "https://fcm.googleapis.com/fcm/send/dr3_YuugerE:APA91bHBenbUR8hK_IMgVP5v4K8VECFy1gpYVkKWEURF97uyoVL_x7CXubpnLd6IEI5yFyLID2djbGTVfJe2E-roKpwhISQcVnlTlAzb22PLqkfIDQboIiniEI5S2pFFyb7coy4rzJg5",
+      "expirationTime": null,
+      "keys": {
+        "p256dh": "BAeNg5nIap7GhVGzhschezxSruQrQTITj5iMouA0SuwIphc6mkT1V55y8ZKlxeNc6zJoCKg1FRVR_kmplUpTCpg",
+        "auth": "X3tOcE8KBgw-32HDDdRcAA"
+      }
+    },
+    {
+      "endpoint": "https://fcm.googleapis.com/fcm/send/cliWE4Hg614:APA91bFLTccdV1AKRlAHSImSYiScK-No7WOW_xrhMcSIiukD-YiyT_IGUF3KjiH0vTET_ASb7eWs3wdE5Gl10ZjRAqJDr3WtMXQ2N5ZfONxZmXIULQSN1X8hZTUdjtkaS8WUbf9fi1t3",
+      "expirationTime": null,
+      "keys": {
+        "p256dh": "BGT-cq9nIlpoUjqJ6A2TOgm_jNtbfeoqZ_0mXM53Kkm08qRZ7YAYuhLoRGKUxXLJrtWzAXpK8YNDL6mGbxcqeuQ",
+        "auth": "FtkgX0zsNbNNU5SwzjeJmg"
+      }
+    },
+    {
+      "endpoint": "https://fcm.googleapis.com/fcm/send/crsAkafgOyM:APA91bGG-BoaG8X4vxucDA_aBNSvJIfpJSax2cNEoM3c9i_SxnIJ4VphExUlEl86UlCoso9iLKsvGLoxMpjjmJ8SG4MmG3MrJm1FBaoKpJLArV1EX8iYE7xC2A-UjCCeFg6CUF3071BX",
+      "expirationTime": null,
+      "keys": {
+        "p256dh": "BNn15E6bNt2avn_LLcYlK9iF85t8pgAPYX7DERnFBeGRvXawY6xmwN1SUVrXRglU9Gq9J_sCER9brb8Cg4o24lc",
+        "auth": "P_V23u323UrAja-R4kUuyQ"
+      }
+    },
+    {
+      "endpoint": "https://fcm.googleapis.com/fcm/send/fX_dUQckySw:APA91bHdYyj6V-ttDNweQKOFQAbFeSabgxavgGksOcdB18czPJM4dSvALTwq6-7bo-jNOrJceHBn7GNVH0inZyGhTtUi1o1fXEonGYSDv962DdwQp3831EU2olFDJFLSCiToGo02zZcw",
+      "expirationTime": null,
+      "keys": {
+        "p256dh": "BGinmrtkF5ASJIL29q96S7Ix_UpEvR0UfCaUK7OZXp2tTvW1PeZoljuXcoxZSc_o9XQ4u44TEJ1AfkDBLkwJaqY",
+        "auth": "9V8dyfaXMkvm0grz8b79DA"
+      }
+    },
+    {
+      "endpoint": "https://fcm.googleapis.com/fcm/send/cmkAEkzatH0:APA91bEXwzetRte6K87JXAuxCO17-4HOWLEz3RITPpVS7H_4Pih5dibHoUdjMyCpJKQvWgfdb2TykMKy_w0hJM-_bEwjJ3wpByCCJZum-e5ZLCO0rhkRteavqygZu4j8Bhr74ZbjjQcf",
+      "expirationTime": null,
+      "keys": {
+        "p256dh": "BMc8YFc_LfRqcXmjJgJaVihsVzgOxMiY3eEu0K9-AEtSfwsaahVtwlYv4JvHwRwFTWkWBNPzDI8BqJ82qY-Duo0",
+        "auth": "4h9EhX-vMrKJY-n2q4-Spw"
+      }
+    },
+    {
+      "endpoint": "https://fcm.googleapis.com/fcm/send/cyGLOCt_fGk:APA91bGY58LgNTU8vSnPksB9RriqV1owTDBN0mcfuRpH5Qvg6cnzyVkNVE-bjuoa8cDVgL4CYPEvcuJ2zehzAGy_aOGfvul-IiRLIzAy7aVhTLx5yyW2yS6XsaF0ZQOTqeNJPtK7fEa3",
+      "expirationTime": null,
+      "keys": {
+        "p256dh": "BEOqFd7_kQjAtkjMMi8uIjAWwCHO2T516U80sTrbf6FGjIz88nWSctjJ768ipH1kaJtTurHZvauqayWjkP_f1Ls",
+        "auth": "e3akTG62uiKdXRqO8dB_Bw"
+      }
+    },
+    {
+      "endpoint": "https://fcm.googleapis.com/fcm/send/fBz8b7ziE_Q:APA91bGwWbM0hYreb9dqGbiCz_r8Ea9hfBrpuasM4tLjMTWLsJmpdyrERcaB5Z24ZRfTYkS4fdfiF1PswJhy5yHz-cdM4UM3-8UmrEEkyx-WZcJyuWaE7Uc6NpFYAVYVgokHt9cLd2Uc",
+      "expirationTime": null,
+      "keys": {
+        "p256dh": "BMMLcyBj3lTi0NiqqnPoDJpxPMSZ1J_HO26p7Acje-DVlh38Pm2so40ci7-bbm3tT9Zr9tXh2uap5Z2ewCe49H4",
+        "auth": "2y3YAUk6zIlHGUuM7dDYVg"
+      }
+    },
+    {
+      "endpoint": "https://wns2-pn1p.notify.windows.com/w/?token=BQYAAABhntFMX%2fwQbhNBSfQh1bU%2bk4OKqNQx7DNquP60Ha5LCIlV2BiEO%2fyNGsHp%2bKRTzWcCUgGgg5QRfNnLKRrI9XgsPsNPIgDa8CuFRmcx6Da7v6SwSHFEgJZbwD%2bOE4NJy5dURQQJNiZZvov6ebTfkAeShweazIxKuqGbeT4aEulUMr5YSLQ61DJIBAEONQVw0j9GzCzC6wjWG0r%2fSX22m6FjXP3aT%2b6A3ANi31sq70TiKDOGWWnfF3UmHJYdwdG6g0tBju1TujyQ1qhxIRnYlHVk44DPOr%2fDqYB2mPcqpv4%2f4G0jnwu%2bDfgho%2bopAB8VKBI%3d",
+      "expirationTime": null,
+      "keys": {
+        "p256dh": "BL4xtdPHJ4X4Li9gf8wdPTv3M39krtFv45Ue3SU56bIcIMTS3xlSdgJi-AxYrdAfsrryGs3oEyyRfaSn8Cv7Nps",
+        "auth": "3WemIGaL5TcFHWzq1WAj_Q"
+      }
+    }
+  ],
+  "settings": {
+    "vapid_public": "BEkJiWkYZt3cbogZU3vUJ9XoozgZuO1dZ0Hp2UdOplJAmtbAbpbxq9pXW_DT0vvi8RZKKyKn9XMSHRNg6j4sdpI",
+    "vapid_private": "vwbhT59yt85TIgT8UGqAQIdJevuVioGk-L0YTMPdykc",
+    "best_streak": 5
+  }
+}

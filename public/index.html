@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Unstop 30-Day Challenge Tracker</title>
+  <meta name="description" content="Duolingo-style streak tracker for Unstop 30-day coding challenge. Stay consistent and keep your flame alive!" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Background Ambient Orbs -->
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+  <div class="bg-orb orb-3"></div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">⚡</span>
+        <span class="logo-text">Unstop <span class="accent">Streak</span></span>
+      </div>
+      <div class="header-right">
+        <!-- Duolingo Streak Pill in Header -->
+        <div class="duo-header-streak" id="header-streak-pill" title="Active Streak">
+          <span class="flame-bounce">🔥</span>
+          <span class="header-streak-count" id="header-streak-count">1</span>
+        </div>
+
+        <!-- User Profile Pill -->
+        <a href="https://unstop.com/u/animegos31002" target="_blank" rel="noopener" class="user-pill" id="user-pill" title="View Animesh's Unstop Profile">
+          <div class="user-avatar" id="user-avatar">AG</div>
+          <div class="user-info">
+            <span class="user-name" id="user-name">Animesh Goswami</span>
+            <span class="user-tag" id="user-tag">@animegos31002</span>
+          </div>
+        </a>
+
+        <div id="notif-status" class="notif-badge notif-off">
+          <span class="notif-dot"></span>
+          <span id="notif-label">Notifications Off</span>
+        </div>
+        <button id="btn-enable-notif" class="btn btn-secondary" onclick="enableNotifications()">
+          🔔 Alerts
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- Pre-Break Streak Warning Banner -->
+    <div class="streak-warning-banner" id="streak-warning-banner" style="display:none;">
+      <div class="warning-icon">🚨</div>
+      <div class="warning-content">
+        <div class="warning-title">STREAK AT RISK BEFORE MIDNIGHT!</div>
+        <div class="warning-desc" id="warning-desc">You haven't solved today's challenge yet. Complete it now to prevent your streak from resetting to 0!</div>
+      </div>
+      <button class="btn btn-warning-action" onclick="scrollToQuest()">Solve Now 🚀</button>
+    </div>
+
+    <!-- 1. Duolingo Flame Hero Streak Section -->
+    <section class="duo-hero-section">
+      <div class="duo-hero-card">
+        <div class="flame-glow-effect"></div>
+
+        <div class="duo-hero-top">
+          <!-- Big 3D Animated Flame -->
+          <div class="duo-flame-container">
+            <div class="flame-ring-pulse"></div>
+            <div class="duo-big-flame" id="duo-big-flame">🔥</div>
+          </div>
+
+          <!-- Streak Info & Status -->
+          <div class="duo-hero-text">
+            <div class="duo-streak-header">
+              <span class="duo-streak-number" id="duo-streak-count">0</span>
+              <span class="duo-streak-label">DAY STREAK!</span>
+            </div>
+            <p class="duo-streak-message" id="duo-streak-message">
+              You're on fire, Animesh! Today's challenge is completed. Come back tomorrow to keep the flame alive! 🔥
+            </p>
+          </div>
+        </div>
+
+        <!-- Extended Stats Bar (Current, Best, Solved, Missed) -->
+        <div class="duo-stats-row">
+          <div class="duo-stat-pill">
+            <span class="stat-icon">🔥</span>
+            <span class="stat-val" id="stat-current-streak">0</span>
+            <span class="stat-lbl">Active Streak</span>
+          </div>
+          <div class="duo-stat-pill">
+            <span class="stat-icon">🏆</span>
+            <span class="stat-val" id="stat-best-streak">0</span>
+            <span class="stat-lbl">Best Streak</span>
+          </div>
+          <div class="duo-stat-pill">
+            <span class="stat-icon">✅</span>
+            <span class="stat-val" id="stat-solved-count">0</span>
+            <span class="stat-lbl">Solved</span>
+          </div>
+          <div class="duo-stat-pill">
+            <span class="stat-icon">💔</span>
+            <span class="stat-val" id="stat-missed-count">0</span>
+            <span class="stat-lbl">Missed</span>
+          </div>
+        </div>
+
+        <!-- Weekly Streak Strip (Mon - Sun) -->
+        <div class="duo-week-wrapper">
+          <div class="duo-week-label">THIS WEEK'S CONSISTENCY</div>
+          <div class="duo-week-days" id="duo-week-days">
+            <!-- Populated dynamically via app.js -->
+          </div>
+        </div>
+
+        <!-- Milestone Progress Card -->
+        <div class="duo-milestone-bar">
+          <div class="milestone-info">
+            <span class="milestone-badge" id="milestone-badge">🏆 Next Goal: 3-Day Streak</span>
+            <span class="milestone-pct" id="milestone-pct">1 / 3 Days</span>
+          </div>
+          <div class="milestone-track">
+            <div class="milestone-fill" id="milestone-fill" style="width: 33%"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Today's Quest (Challenge Action Card) -->
+    <section class="hero-section">
+      <div class="section-label">🎯 TODAY'S CODING QUEST</div>
+      
+      <div class="challenge-card" id="challenge-card">
+        <div class="card-glow"></div>
+
+        <!-- Status Banner -->
+        <div class="status-banner" id="status-banner">
+          <div class="status-pulse"></div>
+          <span id="status-text">Loading quest...</span>
+        </div>
+
+        <!-- Countdown Timer (shown only when pending after midnight) -->
+        <div class="countdown-wrapper" id="countdown-wrapper" style="display:none">
+          <div class="countdown-label">⏱️ Time since reminder fired</div>
+          <div class="countdown-timer" id="countdown-timer">00:00:00</div>
+        </div>
+
+        <!-- Challenge Info -->
+        <div class="challenge-info" id="challenge-info">
+          <div class="challenge-title-row">
+            <span class="challenge-icon" id="quest-icon">🏆</span>
+            <span class="challenge-title" id="challenge-title">Day 1 Challenge</span>
+          </div>
+          <a class="challenge-link" id="challenge-link" href="#" target="_blank" rel="noopener">
+            <span>Open Problem on Unstop →</span>
+          </a>
+        </div>
+
+        <!-- Update Link Form -->
+        <div class="update-form" id="update-form">
+          <div class="form-group">
+            <label class="form-label">📎 Problem Link</label>
+            <input type="url" id="input-link" class="form-input" placeholder="https://unstop.com/practice/coding" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">📝 Problem Title (optional)</label>
+            <input type="text" id="input-title" class="form-input" placeholder="e.g. Array Manipulation Problem" />
+          </div>
+          <button class="btn btn-ghost" onclick="saveLink()">💾 Save Details</button>
+        </div>
+
+        <!-- Action Buttons with 3D Tactile Styling -->
+        <div class="card-actions">
+          <button id="btn-solve" class="btn btn-duo-green btn-large" onclick="markSolved()">
+            <span class="btn-icon">✅</span>
+            <span>Mark as Solved!</span>
+          </button>
+          <button class="btn btn-ghost" onclick="toggleForm()">
+            ✏️ Edit Link
+          </button>
+        </div>
+
+        <!-- Confetti burst on solve -->
+        <div class="confetti-burst" id="confetti-burst"></div>
+      </div>
+    </section>
+
+    <!-- 3. Duolingo-style 30-Day "Path of Mastery" Stepping Stones -->
+    <section class="path-section">
+      <div class="path-header">
+        <div class="path-title-wrap">
+          <h2 class="section-title">🗺️ 30-Day Path of Mastery</h2>
+          <p class="section-sub">Step-by-step roadmap. Complete each day to unlock the full 30-day champion trophy!</p>
+        </div>
+        <div class="path-overall-stat">
+          <span class="stat-highlight" id="path-solved-count">1</span> / 30 Solved
+        </div>
+      </div>
+
+      <!-- Duolingo Stepping Stone Grid -->
+      <div class="duo-path-grid" id="duo-path-grid">
+        <!-- Generated dynamically in app.js -->
+      </div>
+    </section>
+
+    <!-- 4. Quick Actions Panel -->
+    <section class="controls-section">
+      <h2 class="section-title">⚡ Quick Shortcuts</h2>
+      <div class="controls-grid">
+        <button class="control-btn" onclick="refreshData()">
+          <span class="ctrl-icon">🔄</span>
+          <span class="ctrl-label">Refresh Status</span>
+          <span class="ctrl-desc">Reload latest challenge data</span>
+        </button>
+        <div class="control-info">
+          <span class="ctrl-icon">🕛</span>
+          <span class="ctrl-label">Next Reminder</span>
+          <span class="ctrl-desc" id="next-reminder-time">Tonight at 12:00 AM</span>
+        </div>
+        <button class="control-btn" onclick="sendTestPhoneAlert()">
+          <span class="ctrl-icon">📱</span>
+          <span class="ctrl-label">Test Mobile Alert</span>
+          <span class="ctrl-desc">Send push alert to phone</span>
+        </button>
+        <a class="control-btn" id="link-unstop-profile" href="https://unstop.com/u/animegos31002" target="_blank" rel="noopener" style="text-decoration:none">
+          <span class="ctrl-icon">👤</span>
+          <span class="ctrl-label">My Unstop Profile</span>
+          <span class="ctrl-desc">unstop.com/u/animegos31002 ↗</span>
+        </a>
+        <a class="control-btn" id="link-unstop-practice" href="https://unstop.com/practice/coding" target="_blank" rel="noopener" style="text-decoration:none">
+          <span class="ctrl-icon">🎯</span>
+          <span class="ctrl-label">Unstop Practice / POTD</span>
+          <span class="ctrl-desc">Open daily coding challenges ↗</span>
+        </a>
+      </div>
+    </section>
+
+    <!-- 5. Challenge History Table -->
+    <section class="history-section">
+      <h2 class="section-title">📜 Quest Records</h2>
+      <div class="history-table-wrapper">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>Day</th>
+              <th>Quest Title</th>
+              <th>Status</th>
+              <th>Completed At</th>
+              <th>Link</th>
+            </tr>
+          </thead>
+          <tbody id="history-body">
+            <tr><td colspan="5" class="empty-row">Loading challenge records...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Alert Modal (shown when pending after midnight) -->
+  <div class="modal-overlay" id="alert-modal" style="display:none">
+    <div class="modal-card">
+      <div class="modal-icon">🚨</div>
+      <h2 class="modal-title">Challenge Pending!</h2>
+      <p class="modal-body" id="modal-body">You still haven't solved today's Unstop challenge. Get it done!</p>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="modal-open-btn" onclick="openChallengeFromModal()">🚀 Open Challenge</button>
+        <button class="btn btn-ghost" onclick="closeModal()">Later</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

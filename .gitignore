@@ -1,0 +1,23 @@
+# Secrets & Environment
+.env
+*.env
+.env.local
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+
+# Local Backups & Data Dumps
+data/backups/
+backups/
+profile_dump.html
+*.log
+
+# Operating System & IDE Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+logs/
+.vercel/

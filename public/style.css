@@ -1,0 +1,901 @@
+/* ─── Reset & Base ──────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #070a13;
+  --surface: #0e1320;
+  --surface-2: #161c2e;
+  --surface-3: #1f273d;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.18);
+
+  /* Duolingo Streak Signature Colors */
+  --duo-orange: #ff9600;
+  --duo-orange-glow: rgba(255, 150, 0, 0.35);
+  --duo-fire: #ff4b4b;
+  --duo-yellow: #ffd900;
+  --duo-green: #58cc02;
+  --duo-green-shadow: #46a302;
+  --duo-blue: #1cb0f6;
+  --duo-blue-shadow: #1899d6;
+
+  --accent: #6c63ff;
+  --accent-2: #a855f7;
+  --accent-3: #06b6d4;
+
+  --success: #22c55e;
+  --success-bg: rgba(34, 197, 94, 0.12);
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  --text: #f3f6ff;
+  --text-2: #8f9bb3;
+  --text-3: #526079;
+
+  --radius: 20px;
+  --radius-sm: 10px;
+  --radius-lg: 28px;
+
+  --font: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+/* ─── Background Ambient Orbs ─────────────────────────────────────────────────── */
+.bg-orb {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  z-index: 0;
+  animation: float 10s ease-in-out infinite;
+}
+.orb-1 {
+  width: 550px; height: 550px;
+  background: radial-gradient(circle, rgba(255, 150, 0, 0.12) 0%, transparent 70%);
+  top: -100px; left: -100px;
+}
+.orb-2 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(255, 75, 75, 0.1) 0%, transparent 70%);
+  top: 30%; right: -150px;
+  animation-delay: -3s;
+}
+.orb-3 {
+  width: 450px; height: 450px;
+  background: radial-gradient(circle, rgba(88, 204, 2, 0.08) 0%, transparent 70%);
+  bottom: 0; left: 20%;
+  animation-delay: -6s;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-25px) scale(1.05); }
+}
+
+/* ─── Header ─────────────────────────────────────────────────────────────────── */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: rgba(7, 10, 19, 0.85);
+  border-bottom: 1px solid var(--border);
+}
+.header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo-icon {
+  font-size: 1.6rem;
+  filter: drop-shadow(0 0 10px rgba(255, 150, 0, 0.7));
+}
+.logo-text {
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+.logo-text .accent {
+  background: linear-gradient(135deg, var(--duo-orange), var(--duo-yellow));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Duolingo Header Streak Pill */
+.duo-header-streak {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 150, 0, 0.15);
+  border: 1.5px solid rgba(255, 150, 0, 0.4);
+  padding: 6px 14px;
+  border-radius: 100px;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--duo-orange);
+  box-shadow: 0 0 15px rgba(255, 150, 0, 0.2);
+  transition: transform 0.2s ease;
+}
+.duo-header-streak:hover {
+  transform: scale(1.05);
+}
+.flame-bounce {
+  display: inline-block;
+  animation: flame-bounce 1.5s ease-in-out infinite;
+}
+@keyframes flame-bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.15); }
+}
+
+.user-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 5px 12px;
+  border-radius: 100px;
+  text-decoration: none;
+  color: var(--text);
+  transition: all 0.2s ease;
+}
+.user-pill:hover {
+  background: var(--surface-3);
+  border-color: rgba(255, 150, 0, 0.3);
+}
+.user-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--duo-orange), var(--duo-fire));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.75rem;
+  color: #fff;
+}
+.user-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  text-align: left;
+}
+.user-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.user-tag {
+  font-size: 0.7rem;
+  color: var(--text-2);
+}
+
+.notif-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 100px;
+}
+.notif-off { background: rgba(255,255,255,0.05); color: var(--text-2); }
+.notif-on  { background: var(--success-bg); color: var(--success); }
+.notif-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor;
+}
+
+/* ─── Main Content Container ─────────────────────────────────────────────────── */
+.main {
+  position: relative;
+  z-index: 1;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 20px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* ─── 1. Duolingo Flame Hero Section ─────────────────────────────────────────── */
+.duo-hero-card {
+  position: relative;
+  background: linear-gradient(145deg, #131726, #0e121e);
+  border: 2px solid rgba(255, 150, 0, 0.3);
+  border-radius: var(--radius-lg);
+  padding: 32px 28px;
+  box-shadow: 0 15px 45px rgba(255, 150, 0, 0.12), var(--shadow-lg);
+  overflow: hidden;
+}
+.flame-glow-effect {
+  position: absolute;
+  top: -80px; left: 30px;
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(255, 150, 0, 0.25) 0%, transparent 65%);
+  pointer-events: none;
+  filter: blur(40px);
+}
+.duo-hero-top {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+.duo-flame-container {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.duo-big-flame {
+  font-size: 4rem;
+  filter: drop-shadow(0 0 20px rgba(255, 150, 0, 0.8));
+  animation: flame-pulse 2s ease-in-out infinite;
+  user-select: none;
+}
+@keyframes flame-pulse {
+  0%, 100% { transform: scale(1) rotate(-2deg); }
+  50% { transform: scale(1.12) rotate(2deg); }
+}
+.flame-ring-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 150, 0, 0.4);
+  animation: ring-pulse 2.2s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+@keyframes ring-pulse {
+  0% { transform: scale(0.7); opacity: 1; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+.duo-hero-text {
+  flex: 1;
+}
+.duo-streak-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.duo-streak-number {
+  font-size: 3.6rem;
+  font-weight: 900;
+  line-height: 1;
+  background: linear-gradient(135deg, #ffd900 0%, #ff9600 50%, #ff4b4b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 8px rgba(255, 150, 0, 0.4));
+}
+.duo-streak-label {
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  color: var(--text);
+}
+.duo-streak-message {
+  font-size: 1.05rem;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
+/* Weekly Consistency Calendar Strip */
+.duo-week-wrapper {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.duo-week-label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--text-3);
+  margin-bottom: 12px;
+}
+.duo-week-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+}
+.duo-day-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.duo-day-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  color: var(--text-3);
+  transition: all 0.2s ease;
+}
+.duo-day-circle.day-done {
+  background: linear-gradient(135deg, var(--duo-orange), var(--duo-fire));
+  border-color: #ffd900;
+  color: #fff;
+  box-shadow: 0 0 15px rgba(255, 150, 0, 0.4);
+}
+.duo-day-circle.day-today {
+  border-color: var(--duo-orange);
+  background: rgba(255, 150, 0, 0.15);
+  box-shadow: 0 0 0 3px rgba(255, 150, 0, 0.25);
+}
+.duo-day-name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+/* Milestone Progress Bar */
+.duo-milestone-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.milestone-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.milestone-badge {
+  color: var(--duo-yellow);
+}
+.milestone-pct {
+  color: var(--text-2);
+}
+.milestone-track {
+  height: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 100px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.milestone-fill {
+  height: 100%;
+  border-radius: 100px;
+  background: linear-gradient(90deg, var(--duo-orange), var(--duo-green));
+  box-shadow: 0 0 12px rgba(88, 204, 2, 0.5);
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── 2. Today's Quest Challenge Card ────────────────────────────────────────── */
+.section-label {
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--duo-orange);
+  margin-bottom: 10px;
+}
+.challenge-card {
+  position: relative;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+}
+.challenge-card.pending {
+  border-color: rgba(255, 150, 0, 0.4);
+}
+.challenge-card.solved {
+  border-color: rgba(88, 204, 2, 0.4);
+}
+
+.status-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 150, 0, 0.12);
+  border: 1px solid rgba(255, 150, 0, 0.3);
+  color: var(--duo-orange);
+  padding: 6px 14px;
+  border-radius: 100px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 18px;
+}
+.status-banner.status-solved {
+  background: var(--success-bg);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: var(--success);
+}
+.status-pulse {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: currentColor;
+  animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.9); opacity: 1; }
+  70% { transform: scale(1.7); opacity: 0; }
+  100% { transform: scale(0.9); opacity: 0; }
+}
+
+.challenge-info {
+  margin-bottom: 24px;
+}
+.challenge-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.challenge-icon {
+  font-size: 1.8rem;
+}
+.challenge-title {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: var(--text);
+}
+.challenge-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--duo-blue);
+  font-weight: 700;
+  text-decoration: none;
+  font-size: 0.95rem;
+  transition: transform 0.2s ease;
+}
+.challenge-link:hover {
+  transform: translateX(3px);
+  text-decoration: underline;
+}
+
+/* 3D Tactile Buttons (Duolingo Style) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font);
+  font-weight: 800;
+  padding: 12px 24px;
+  border-radius: 16px;
+  cursor: pointer;
+  border: none;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+.btn-large {
+  font-size: 1.1rem;
+  padding: 14px 28px;
+}
+.btn-duo-green {
+  background: var(--duo-green);
+  color: #fff;
+  box-shadow: 0 5px 0 var(--duo-green-shadow);
+}
+.btn-duo-green:hover:not(:disabled) {
+  background: #61e002;
+  transform: translateY(-2px);
+  box-shadow: 0 7px 0 var(--duo-green-shadow);
+}
+.btn-duo-green:active:not(:disabled) {
+  transform: translateY(4px);
+  box-shadow: 0 1px 0 var(--duo-green-shadow);
+}
+.btn-solved {
+  background: var(--surface-3);
+  color: var(--text-2);
+  cursor: default;
+  box-shadow: none;
+}
+.btn-secondary {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.card-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ─── 3. Duolingo 30-Day Path of Mastery Stepping Stones ─────────────────────── */
+.path-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.path-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.section-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+.section-sub {
+  font-size: 0.9rem;
+  color: var(--text-2);
+}
+.path-overall-stat {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text-2);
+}
+.stat-highlight {
+  color: var(--duo-orange);
+  font-size: 1.2rem;
+}
+
+/* The Stepping Stone Grid */
+.duo-path-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 16px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+.stone-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+  user-select: none;
+}
+.stone-node:hover {
+  transform: translateY(-4px);
+}
+.stone-circle {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  font-weight: 800;
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  box-shadow: 0 4px 0 rgba(0,0,0,0.3);
+  transition: all 0.2s ease;
+}
+.stone-circle.stone-solved {
+  background: linear-gradient(135deg, var(--duo-green), #429900);
+  border-color: #8aff14;
+  color: #fff;
+  box-shadow: 0 5px 0 var(--duo-green-shadow), 0 0 16px rgba(88, 204, 2, 0.4);
+}
+.stone-circle.stone-active {
+  background: linear-gradient(135deg, var(--duo-orange), var(--duo-fire));
+  border-color: #ffd900;
+  color: #fff;
+  box-shadow: 0 5px 0 #cc3a3a, 0 0 20px rgba(255, 150, 0, 0.6);
+  animation: stone-halo 1.8s ease-in-out infinite;
+}
+@keyframes stone-halo {
+  0%, 100% { box-shadow: 0 5px 0 #cc3a3a, 0 0 15px rgba(255, 150, 0, 0.5); }
+  50% { box-shadow: 0 5px 0 #cc3a3a, 0 0 30px rgba(255, 150, 0, 0.85); }
+}
+.stone-circle.stone-locked {
+  background: var(--surface-2);
+  color: var(--text-3);
+  border-color: var(--border);
+}
+.stone-day-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+/* ─── 4. Quick Shortcuts & Controls ─────────────────────────────────────────── */
+.controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+.control-btn, .control-info {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+  transition: all 0.2s ease;
+}
+.control-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+}
+.ctrl-icon {
+  font-size: 1.5rem;
+  margin-bottom: 4px;
+}
+.ctrl-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.ctrl-desc {
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+
+/* ─── 5. Challenge History Table ─────────────────────────────────────────────── */
+.history-table-wrapper {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.history-table th {
+  background: var(--surface-2);
+  padding: 14px 18px;
+  text-align: left;
+  font-weight: 700;
+  color: var(--text-2);
+  border-bottom: 1px solid var(--border);
+}
+.history-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.history-table tr:last-child td {
+  border-bottom: none;
+}
+.status-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 100px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.chip-solved { background: var(--success-bg); color: var(--success); }
+.chip-pending { background: rgba(255, 150, 0, 0.15); color: var(--duo-orange); }
+.chip-skipped { background: rgba(255, 255, 255, 0.08); color: var(--text-2); }
+.table-link {
+  color: var(--duo-blue);
+  text-decoration: none;
+  font-weight: 700;
+}
+.table-link:hover {
+  text-decoration: underline;
+}
+
+/* ─── Modals & Toasts ────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-card {
+  background: var(--surface);
+  border: 2px solid rgba(255, 150, 0, 0.4);
+  border-radius: var(--radius-lg);
+  padding: 36px 30px;
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.8);
+}
+.modal-icon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+}
+.modal-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+.modal-body {
+  font-size: 0.95rem;
+  color: var(--text-2);
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.toast {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 12px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.toast-success { border-color: var(--success); }
+.toast-error { border-color: var(--danger); }
+.toast-info { border-color: var(--duo-blue); }
+
+.update-form {
+  display: none;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-bottom: 18px;
+}
+.update-form.open { display: block; }
+.form-group { margin-bottom: 12px; }
+.form-label { display: block; font-size: 0.8rem; font-weight: 700; color: var(--text-2); margin-bottom: 6px; }
+.form-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.9rem;
+}
+.form-input:focus {
+  outline: none;
+  border-color: var(--duo-orange);
+}
+
+.confetti-burst {
+  position: absolute;
+  top: 50%; left: 50%;
+  pointer-events: none;
+}
+
+/* ─── Pre-Break Streak Warning Banner ────────────────────────────────────────── */
+.streak-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: linear-gradient(135deg, rgba(235, 68, 68, 0.25), rgba(255, 150, 0, 0.2));
+  border: 2px solid #ff4b4b;
+  border-radius: var(--radius-md);
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 0 25px rgba(235, 68, 68, 0.3);
+  animation: pulseWarning 2s ease-in-out infinite;
+}
+@keyframes pulseWarning {
+  0%, 100% { box-shadow: 0 0 20px rgba(235, 68, 68, 0.25); border-color: #ff4b4b; }
+  50% { box-shadow: 0 0 35px rgba(235, 68, 68, 0.5); border-color: #ff9600; }
+}
+.warning-icon { font-size: 2.2rem; }
+.warning-content { flex: 1; }
+.warning-title { font-weight: 900; font-size: 1.1rem; color: #ff4b4b; letter-spacing: 0.5px; }
+.warning-desc { font-size: 0.9rem; color: var(--text-2); margin-top: 2px; }
+.btn-warning-action {
+  background: linear-gradient(135deg, #ff4b4b, #ff9600);
+  color: #fff;
+  font-weight: 800;
+  padding: 10px 20px;
+  border-radius: 100px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(235, 68, 68, 0.4);
+  transition: transform 0.2s ease;
+}
+.btn-warning-action:hover { transform: scale(1.05); }
+
+/* ─── Duo Extended Stats Pills Bar ───────────────────────────────────────────── */
+.duo-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 20px 0;
+}
+.duo-stat-pill {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.duo-stat-pill:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.stat-icon { font-size: 1.3rem; margin-bottom: 2px; }
+.stat-val { font-size: 1.3rem; font-weight: 900; color: var(--text); }
+.stat-lbl { font-size: 0.75rem; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* ─── Missed Stepping Stone Styling ─────────────────────────────────────────── */
+.stone-circle.stone-missed {
+  background: linear-gradient(135deg, rgba(235, 68, 68, 0.3), rgba(180, 40, 40, 0.4));
+  border-color: #ff4b4b;
+  color: #ff4b4b;
+  box-shadow: 0 0 15px rgba(235, 68, 68, 0.3);
+}
+
+.chip-missed {
+  background: rgba(235, 68, 68, 0.15) !important;
+  color: #ff4b4b !important;
+  border: 1px solid rgba(235, 68, 68, 0.3) !important;
+}
+
