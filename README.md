@@ -1,4 +1,4 @@
-# 🐍 Unstop 30-Day Challenge Tracker (Python Edition)
+# 🐍 Tracker Unstop - 30-Day Challenge Tracker
 
 Personalized for **Animesh Goswami** (`animegos31002` / `animesh.goswami045@gmail.com`).
 

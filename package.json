@@ -1,7 +1,7 @@
 {
-  "name": "unstop-30day-reminder",
+  "name": "tracker-unstop",
   "version": "1.0.0",
-  "description": "30-Day Unstop Challenge Reminder App",
+  "description": "Tracker Unstop - 30-Day Challenge Reminder App",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

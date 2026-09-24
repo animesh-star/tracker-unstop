@@ -470,7 +470,7 @@ $xmlString = @"
 
 $xmlDoc = New-Object Windows.Data.Xml.Dom.XmlDocument
 $xmlDoc.LoadXml($xmlString)
-$appId = "Unstop Challenge Tracker"
+$appId = "Tracker Unstop"
 $toast = [Windows.UI.Notifications.ToastNotification]::new($xmlDoc)
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId).Show($toast)
 """
