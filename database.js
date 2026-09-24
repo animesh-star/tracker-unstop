@@ -178,7 +178,13 @@ function cleanOldBackups(maxAgeDays = 14) {
 // ─── Helper Timestamps ─────────────────────────────────────────────────────────
 
 function todayDateStr() {
-  return new Date().toISOString().split('T')[0];
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  } catch {
+    const now = new Date();
+    const istDate = new Date(now.getTime() + 5.5 * 3600 * 1000);
+    return istDate.toISOString().split('T')[0];
+  }
 }
 
 function nowISO() {
@@ -191,17 +197,16 @@ function getOrCreateTodayChallenge() {
   const db = readDB();
   const today = todayDateStr();
 
-  // 1. Prioritize active pending quest
-  const pending = db.challenges.find(c => c.status === 'pending');
-  if (pending) return pending;
-
-  // 2. Check if a challenge was solved today
+  // 1. First check if any challenge was solved TODAY (preserves active streak & suppresses alerts)
   const todaySolved = db.challenges.find(c => {
     const sDate = c.solved_at ? c.solved_at.split('T')[0] : null;
-    const cDate = c.created_at ? c.created_at.split('T')[0] : null;
-    return sDate === today || cDate === today;
+    return sDate === today && c.status === 'solved';
   });
   if (todaySolved) return todaySolved;
+
+  // 2. Prioritize active pending quest
+  const pending = db.challenges.find(c => c.status === 'pending');
+  if (pending) return pending;
 
   // 3. Fallback to next sequential day
   const maxSolved = db.challenges.reduce((max, c) => (c.status === 'solved' ? Math.max(max, c.day || 0) : max), 0);
@@ -239,15 +244,35 @@ function evaluateAndUpdateMissedDays() {
 
   const streak = getStreakUnlocked(db);
   if (!db.settings) db.settings = {};
-  const bestStreak = db.settings.best_streak || 0;
-  if (streak > bestStreak) {
-    db.settings.best_streak = streak;
+  const bestStreak = calculateAllTimeBestStreak(db);
+  if (bestStreak > (db.settings.best_streak || 0)) {
+    db.settings.best_streak = bestStreak;
     changed = true;
   }
 
   if (changed) {
     writeDB(db);
   }
+}
+
+function calculateAllTimeBestStreak(db) {
+  const cmap = {};
+  (db.challenges || []).forEach(c => { cmap[c.day] = c; });
+  let maxStreak = 0;
+  let currentRun = 0;
+  for (let d = 1; d <= 30; d++) {
+    const c = cmap[d];
+    if (c && c.status === 'solved') {
+      currentRun++;
+      if (currentRun > maxStreak) {
+        maxStreak = currentRun;
+      }
+    } else {
+      currentRun = 0;
+    }
+  }
+  const savedBest = db.settings?.best_streak || 0;
+  return Math.max(maxStreak, savedBest);
 }
 
 function getStreakUnlocked(db) {
@@ -328,7 +353,7 @@ function getStats() {
   const missed = db.challenges.filter(c => c.status === 'missed').length;
   const total = db.challenges.length;
   const streak = getStreakUnlocked(db);
-  const bestStreak = Math.max(db.settings?.best_streak || 0, streak);
+  const bestStreak = Math.max(calculateAllTimeBestStreak(db), streak);
 
   const current = getOrCreateTodayChallenge();
   const todayStatus = current ? current.status : 'pending';
