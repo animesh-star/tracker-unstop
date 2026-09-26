@@ -696,3 +696,35 @@ function urlBase64ToUint8Array(base64String) {
   const raw = atob(base64);
   return new Uint8Array([...raw].map(c => c.charCodeAt(0)));
 }
+
+// ─── Notification & Alert Testing ─────────────────────────────────────────────
+async function sendTestPhoneAlert() {
+  try {
+    showToast('📱 Sending test mobile notification...', 'info');
+    const res = await fetch(`${API_BASE}/api/test-phone-notify`, { method: 'POST' });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(`✅ Mobile alert delivered to topic: ${data.topic}`, 'success');
+    } else {
+      showToast('❌ Mobile notification failed', 'error');
+    }
+  } catch (err) {
+    showToast('❌ Server error: ' + err.message, 'error');
+  }
+}
+
+async function triggerFirstOpenTest() {
+  try {
+    showToast('☀️ Triggering first-in-day home screen popup & toast...', 'info');
+    const res = await fetch(`${API_BASE}/api/test-first-open`, { method: 'POST' });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast('✅ Home screen popup card & toast triggered!', 'success');
+    } else {
+      showToast('❌ Could not trigger popup: ' + (data.detail || data.error), 'error');
+    }
+  } catch (err) {
+    showToast('❌ Server error: ' + err.message, 'error');
+  }
+}
+

@@ -847,7 +847,18 @@ def api_today():
     challenge = get_or_create_today_challenge()
     stats = get_stats()
     user = get_user_profile()
-    return {"challenge": challenge, "stats": stats, "user": user}
+    today = today_date_str()
+    state_file = DATA_DIR / "notifier_state.json"
+    first_open_done = False
+    if state_file.exists():
+        try:
+            with open(state_file, "r", encoding="utf-8") as f:
+                st = json.load(f)
+                first_open_done = (st.get("last_first_open_date") == today)
+        except Exception:
+            pass
+    return {"challenge": challenge, "stats": stats, "user": user, "first_open_done": first_open_done}
+
 
 @app.get("/api/roadmap")
 def api_roadmap():
@@ -965,6 +976,16 @@ def api_test_phone_notify():
         is_repeat=False
     )
     return {"success": success, "topic": topic}
+
+@app.post("/api/test-first-open", dependencies=[Depends(verify_api_key)])
+def api_test_first_open():
+    notifier_script = BASE_DIR / "unstop_laptop_notifier.py"
+    python_exe = sys.executable.replace("pythonw.exe", "python.exe")
+    cmd = [python_exe, str(notifier_script), "--first-open", "--force"]
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
+    subprocess.Popen(cmd, creationflags=creationflags)
+    return {"success": True, "message": "First-in-day laptop open popup triggered!"}
+
 
 @app.post("/api/backup", dependencies=[Depends(verify_api_key)])
 def api_trigger_backup():

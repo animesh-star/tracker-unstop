@@ -65,6 +65,31 @@ All progress is stored in `challenges.json`:
 
 - **Backend**: Python 3.14 + FastAPI + Uvicorn + Schedule + Requests
 - **Mobile Push**: ntfy.sh (open source, zero-config push protocol)
-- **Database**: Local JSON storage (`challenges.json`)
+- **Laptop Home Screen Notifier**: Native Windows Toast + Tkinter Interactive Home Screen Popup
+- **Database**: Local JSON storage (`challenges.json` + `notifier_state.json`)
 - **Frontend**: HTML5 + CSS3 + Vanilla JS (dark mode, glassmorphism, responsive)
->>>>>>> 262f251 (feat: Unstop 30-Day Tracker with Phone & Laptop Wake Notifier and Vercel support)
+
+---
+
+## ☀️ First Laptop Open of the Day (Home Screen Popup)
+
+Whenever you open your laptop for the first time in the day:
+1. **Automatic Detection**: Detects both laptop boot / Windows login and opening the laptop lid / waking from sleep.
+2. **Interactive Home Screen Popup**: If today's challenge is not completed, pops up an interactive desktop card directly on your screen with:
+   - Today's day number & challenge title
+   - Current active streak flame 🔥
+   - `🚀 Open Task in Chrome` button (redirects directly to Google Chrome)
+   - `✅ Mark Solved` button (marks challenge complete directly)
+   - `⏰ Remind in 30m` snooze button
+3. **Suppressed if Solved**: If you already solved today's challenge, it will never interrupt you.
+4. **Test Anytime**:
+   ```bash
+   # Test the home screen popup & Chrome redirection
+   python unstop_cli.py first-open --force
+
+   # Open today's challenge directly in Chrome
+   python unstop_cli.py open
+   ```
+   Or click **"☀️ Test Home Screen Popup"** on the Web Dashboard!
+
+

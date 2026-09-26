@@ -13,6 +13,9 @@ data/backups/
 backups/
 profile_dump.html
 *.log
+data/notifier_state.json
+data/*.tmp
+
 
 # Operating System & IDE Files
 .DS_Store

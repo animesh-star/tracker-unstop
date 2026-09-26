@@ -5,7 +5,10 @@ Easily check progress, mark challenges as solved, or test phone alerts from the 
 Usage:
   python unstop_cli.py status      - View today's status & streak
   python unstop_cli.py solve       - Mark today's challenge as solved
+  python unstop_cli.py open        - Open today's challenge directly in Google Chrome
+  python unstop_cli.py first-open  - Test first laptop open of the day popup
   python unstop_cli.py alert       - Send instant test alert to phone
+  python unstop_cli.py laptop      - Send test toast to laptop
   python unstop_cli.py roadmap     - View the 30-day task list
   python unstop_cli.py backup      - Trigger secure snapshot backup
 """
@@ -451,7 +454,29 @@ if __name__ == "__main__":
     elif cmd in ("laptop", "notify", "test"):
         force_flag = "--force" in sys.argv or "-f" in sys.argv
         send_laptop_notification(force=force_flag)
+    elif cmd in ("first-open", "first", "firstopen", "test-first-open"):
+        force_flag = "--force" in sys.argv or "-f" in sys.argv
+        notifier_script = BASE_DIR / "unstop_laptop_notifier.py"
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
+        args = [sys.executable, str(notifier_script), "--first-open"]
+        if force_flag:
+            args.append("--force")
+        subprocess.run(args)
+    elif cmd in ("open", "chrome", "open-task", "solve-now"):
+        from unstop_laptop_notifier import open_url_in_chrome
+        try:
+            res = requests.get(f"{BASE_URL}/today", headers=get_headers(), timeout=3)
+            data = res.json()
+            c = data.get("challenge", {})
+            link = c.get("link") or data.get("user", {}).get("practiceUrl") or "https://unstop.com/practice/coding"
+            day = c.get("day", 1)
+        except Exception:
+            link = "https://unstop.com/practice/coding"
+            day = 1
+        open_url_in_chrome(link)
+        print(f"\n🚀 Redirected Day {day} challenge directly to Google Chrome!\n🔗 URL: {link}\n")
     elif cmd in ("popup", "test-popup", "card"):
+
         notifier_script = BASE_DIR / "unstop_laptop_notifier.py"
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         subprocess.Popen([sys.executable, str(notifier_script), "--popup"])
@@ -477,5 +502,6 @@ if __name__ == "__main__":
         import unstop_service
         unstop_service.uninstall_autostart()
     else:
-        print("Unknown command. Use: status | solve | alert | laptop | roadmap | server | autostart | server-stop | backup | potd <day> <title> <link> [status]")
+        print("Unknown command. Use: status | solve | alert | laptop | first-open | popup | roadmap | server | autostart | server-stop | backup | potd <day> <title> <link> [status]")
+
 
