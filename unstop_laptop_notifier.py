@@ -1,11 +1,12 @@
 """
 Unstop Laptop Home Screen Notifier & First-in-Day Reminder
-Automatically checks when the laptop is opened:
-- First time opening laptop in the day: if today's challenge is not completed,
-  pops up an interactive desktop alert card & Windows Toast on the home screen.
-- Checks on Windows startup / boot / logon.
-- Checks on laptop lid open / wake from sleep / hibernate.
-- Streams ntfy.sh topic alerts in real-time.
+Automatically checks when the laptop is opened or unlocked:
+- Detects laptop boot / Windows startup / logon
+- Detects laptop lid open / wake from sleep / hibernate
+- Detects workstation unlock (when user unlocks their laptop)
+- If today's challenge is not completed, pops up an interactive desktop alert card & Windows Toast on the home screen
+- Direct one-click launch in Google Chrome for the coding challenge
+- Streams ntfy.sh topic alerts in real-time
 """
 
 import os
@@ -58,6 +59,19 @@ snooze_until = 0
 def today_date_str() -> str:
     return datetime.now(IST).strftime("%Y-%m-%d")
 
+def is_workstation_locked() -> bool:
+    """Checks whether the Windows workstation / screen is currently locked."""
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        hdesk = user32.OpenInputDesktop(0, False, 0x0100) # DESKTOP_SWITCHDESKTOP
+        if hdesk:
+            user32.CloseDesktop(hdesk)
+            return False
+        return True
+    except Exception:
+        return False
+
 def get_chrome_path() -> str:
     """Finds Google Chrome executable path on Windows."""
     candidates = [
@@ -98,22 +112,42 @@ def open_url_in_chrome(url: str):
     """
     target_url = url or "https://unstop.com/practice/coding"
     chrome_path = get_chrome_path()
-    if chrome_path:
+
+    # Method 1: Windows shell start with direct chrome path (detached, brings window to front)
+    if chrome_path and os.path.isfile(chrome_path):
         try:
-            subprocess.Popen([chrome_path, target_url])
+            cmd = f'start "" "{chrome_path}" "{target_url}"'
+            subprocess.Popen(cmd, shell=True)
+            print(f"🚀 [Chrome Launcher] Launched via path: {chrome_path}")
             return True
         except Exception as e:
-            print(f"Error launching Chrome directly: {e}")
+            print(f"Error launching via chrome path: {e}")
 
+    # Method 2: Windows shell start with registered chrome command
     try:
-        browser = webbrowser.get('chrome')
-        browser.open(target_url)
+        cmd = f'start chrome "{target_url}"'
+        subprocess.Popen(cmd, shell=True)
+        print("🚀 [Chrome Launcher] Launched via 'start chrome'")
+        return True
+    except Exception as e:
+        print(f"Error launching via start chrome: {e}")
+
+    # Method 3: Direct subprocess invocation with DETACHED flags
+    if chrome_path and os.path.isfile(chrome_path):
+        try:
+            subprocess.Popen([chrome_path, target_url], creationflags=0x00000008 | 0x00000200)
+            return True
+        except Exception:
+            pass
+
+    # Method 4: Fallback to webbrowser
+    try:
+        webbrowser.open(target_url)
         return True
     except Exception:
         pass
 
-    webbrowser.open(target_url)
-    return True
+    return False
 
 def load_notifier_state() -> dict:
     """Reads persistent state for first-open-of-day tracking and snoozing."""
@@ -126,6 +160,7 @@ def load_notifier_state() -> dict:
     return {
         "last_first_open_date": "",
         "first_open_shown_at": "",
+        "last_popup_time": 0,
         "last_wake_at": "",
         "snooze_until": 0
     }
@@ -230,7 +265,7 @@ $xmlString = @"
         </binding>
     </visual>
     <actions>
-        <action content="Open Challenge" arguments="{safe_link}" activationType="protocol" />
+        <action content="Open Task in Chrome" arguments="{safe_link}" activationType="protocol" />
     </actions>
 </toast>
 "@
@@ -314,7 +349,10 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
         def close_win():
             global popup_active
             popup_active = False
-            root.destroy()
+            try:
+                root.destroy()
+            except Exception:
+                pass
 
         close_btn = tk.Label(header, text="✕", font=("Segoe UI", 12, "bold"), fg="#718096", bg="#131a2e", cursor="hand2")
         close_btn.pack(side="right")
@@ -364,10 +402,19 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
         btn_row.pack(fill="x", pady=(2, 8))
 
         def open_challenge():
+            try:
+                open_btn.config(text="Opening Chrome...", state="disabled")
+            except Exception:
+                pass
             open_url_in_chrome(link or "https://unstop.com/practice/coding")
-            close_win()
+            # Wait 400ms before destroying GUI so Windows command handoff completes cleanly
+            root.after(400, close_win)
 
         def mark_as_done():
+            try:
+                solve_btn.config(text="Saving...", state="disabled")
+            except Exception:
+                pass
             success = False
             try:
                 # 1. Try local server API
@@ -402,7 +449,7 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
                     f"Awesome job {user_name}! Day {day} is complete and your {streak + 1}-day streak is secured! 🔥",
                     link
                 )
-            close_win()
+            root.after(300, close_win)
 
         def snooze():
             snooze_ts = time.time() + (30 * 60)
@@ -426,7 +473,6 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
             command=open_challenge
         )
         open_btn.pack(side="left", padx=(0, 6))
-
 
         solve_btn = tk.Button(
             btn_row,
@@ -468,24 +514,26 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
     finally:
         popup_active = False
 
-def check_first_open_of_day(force: bool = False, reason: str = "Laptop Open") -> bool:
+def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") -> bool:
     """
-    Checks if this is the first time the laptop is opened today.
-    If today's challenge is not completed, automatically pops up the
-    home screen alert card & Windows Toast notification.
+    Called whenever the laptop is opened, unlocked, or woken from sleep.
+    If today's challenge is not yet solved, pops up the desktop alert card
+    and delivers the Windows notification banner.
     """
     today = today_date_str()
     state = load_notifier_state()
-
-    # Check snooze
     now_ts = time.time()
+
+    # 1. Check snooze
     if not force and now_ts < state.get("snooze_until", 0):
         remaining = int(state.get("snooze_until", 0) - now_ts)
-        print(f"⏰ [First Open Check] Snoozed ({remaining}s remaining). Skipping popup.")
+        print(f"⏰ [Laptop Open Check] Snoozed ({remaining}s remaining). Skipping popup.")
         return False
 
-    if not force and state.get("last_first_open_date") == today:
-        print(f"ℹ️ [First Open Check] First open already recorded for today ({today}). Skipping popup.")
+    # 2. Check cooldown between popups (2 minutes) to prevent duplicate overlapping windows
+    last_popup_time = state.get("last_popup_time", 0)
+    if not force and (now_ts - last_popup_time) < 120:
+        print(f"⏳ [Laptop Open Check] Popup already triggered recently ({int(now_ts - last_popup_time)}s ago). Skipping duplicate.")
         return False
 
     data = get_today_status()
@@ -501,24 +549,29 @@ def check_first_open_of_day(force: bool = False, reason: str = "Laptop Open") ->
     link = challenge.get("link") or user.get("practiceUrl") or "https://unstop.com/practice/coding"
 
     if status == "solved" and not force:
-        print(f"✅ [First Open Check] Day {day} is already SOLVED! Home screen popup suppressed.")
+        print(f"✅ [Laptop Open Check] Day {day} is already SOLVED! Home screen popup completely suppressed.")
         state["last_first_open_date"] = today
         state["first_open_resolved_at"] = datetime.now(IST).isoformat()
         save_notifier_state(state)
         return False
 
-    print(f"☀️ [First Open of Day] Laptop opened ({reason})! Day {day} is pending. Launching home screen popup & toast!")
+    is_first_open = (state.get("last_first_open_date") != today)
+    print(f"☀️ [Laptop Open Alert] Laptop opened ({reason})! Day {day} is pending. Launching home screen popup & toast!")
 
     state["last_first_open_date"] = today
+    state["last_popup_time"] = now_ts
     state["first_open_shown_at"] = datetime.now(IST).isoformat()
     save_notifier_state(state)
 
     # 1. Native Windows Toast
-    send_laptop_toast(
-        f"☀️ Good Day {user_name}! Day {day} Challenge Waiting!",
-        f"First laptop open of the day! Complete Day {day} to keep your {streak}-day streak alive! 🚀",
-        link
-    )
+    if is_first_open:
+        toast_title = f"☀️ Good Day {user_name}! Day {day} Challenge Waiting!"
+        toast_body = f"First laptop open of the day! Complete Day {day} to keep your {streak}-day streak alive! 🚀"
+    else:
+        toast_title = f"⚡ Unstop Challenge Day {day} Pending!"
+        toast_body = f"Hey {user_name}! Day {day} is not solved yet. Keep your {streak}-day streak alive! 🚀"
+
+    send_laptop_toast(toast_title, toast_body, link)
 
     # 2. Interactive Desktop Home Screen Card Popup
     pythonw_exe = sys.executable.replace("python.exe", "pythonw.exe")
@@ -536,40 +589,16 @@ def check_first_open_of_day(force: bool = False, reason: str = "Laptop Open") ->
             user_name
         ], creationflags=creationflags)
     except Exception:
-        threading.Thread(target=show_gui_popup, args=(day, title, streak, link, user_name, True), daemon=True).start()
+        threading.Thread(target=show_gui_popup, args=(day, title, streak, link, user_name, is_first_open), daemon=True).start()
 
     return True
 
+# Alias for backwards compatibility
+check_first_open_of_day = trigger_laptop_open_alert
+
 def check_and_notify(force: bool = False, reason: str = "Opening Check"):
-    """Checks if today's task is done; if not, triggers toast."""
-    state = load_notifier_state()
-    if not force and time.time() < state.get("snooze_until", 0):
-        return
-
-    data = get_today_status()
-    challenge = data.get("challenge", {})
-    stats = data.get("stats", {})
-    user = data.get("user", {})
-
-    status = challenge.get("status", "pending")
-    day = challenge.get("day", 1)
-    streak = stats.get("streak", 0)
-    user_name = user.get("name", "Animesh").split()[0]
-    link = challenge.get("link") or user.get("practiceUrl") or "https://unstop.com/practice/coding"
-
-    if status == "solved" and not force:
-        print(f"✅ [Laptop Alert] Day {day} is already solved! Notification suppressed.")
-        return
-
-    if status != "solved" or force:
-        print(f"⚡ [Laptop Alert] Task pending for Day {day}! Delivering smooth toast notification ({reason})...")
-        send_laptop_toast(
-            f"⚡ Unstop Challenge Day {day} Pending!",
-            f"Hey {user_name}! Day {day} is not solved yet. Keep your {streak}-day streak alive!",
-            link
-        )
-    else:
-        print(f"✅ [Laptop Alert] Day {day} already solved! No notification needed.")
+    """Checks if today's task is done; triggers popup & toast."""
+    trigger_laptop_open_alert(force=force, reason=reason)
 
 def ntfy_stream_listener():
     """Listens in real time to ntfy.sh topic and alerts laptop screen when message arrives."""
@@ -588,53 +617,56 @@ def ntfy_stream_listener():
                         if st.get("challenge", {}).get("status") == "solved":
                             print(f"✅ [ntfy Stream] Today's challenge is already solved! Suppressing notification.")
                         else:
-                            check_and_notify(force=False, reason="ntfy alert received")
+                            trigger_laptop_open_alert(force=False, reason="ntfy alert received")
         except Exception:
             time.sleep(10)
 
 def periodic_wake_checker():
     """
-    Checks periodically (every 5 min) AND immediately whenever the laptop
-    wakes from sleep, hibernate, or the lid is opened.
+    Actively detects laptop open events:
+    1. System wake / lid open (time jump > 3s while sleeping 1s)
+    2. Workstation unlock (screen unlocked by user)
+    3. Periodic escalation check (every 5 mins)
     """
     last_check_time = time.time()
     last_tick = time.time()
+    was_locked = is_workstation_locked()
 
     while True:
         try:
-            time.sleep(5)
+            time.sleep(1)
             now = time.time()
             elapsed_since_tick = now - last_tick
             last_tick = now
 
-            # If time jumped by more than 20 seconds during a 5-second sleep,
-            # the laptop was asleep / lid was closed and just opened!
-            if elapsed_since_tick > 20:
+            # Detection 1: Did system wake from sleep/hibernate/lid close?
+            # A 1-second sleep taking > 3 seconds means system suspended / lid was closed!
+            is_wake = (elapsed_since_tick > 3.0)
+
+            # Detection 2: Did the user unlock their workstation / open screen?
+            now_locked = is_workstation_locked()
+            is_unlock = (was_locked and not now_locked)
+            was_locked = now_locked
+
+            if is_wake:
                 print(f"💻 [Wake Detector] Laptop lid opened / woke from sleep (slept ~{int(elapsed_since_tick)}s).")
-                time.sleep(2)  # Short pause to ensure desktop is ready
+                time.sleep(1)
+                trigger_laptop_open_alert(force=False, reason="Laptop Lid Opened / Woke from Sleep")
+                last_check_time = time.time()
 
-                today = today_date_str()
-                state = load_notifier_state()
-                state["last_wake_at"] = datetime.now(IST).isoformat()
-                save_notifier_state(state)
-
-                if state.get("last_first_open_date") != today:
-                    check_first_open_of_day(force=False, reason="First Laptop Lid Open of Day")
-                else:
-                    check_and_notify(force=False, reason="Subsequent Lid Open")
+            elif is_unlock:
+                print("🔓 [Unlock Detector] Workstation unlocked / laptop screen opened!")
+                time.sleep(1)
+                trigger_laptop_open_alert(force=False, reason="Workstation Unlocked")
                 last_check_time = time.time()
 
             elif now - last_check_time >= 300:
-                today = today_date_str()
-                state = load_notifier_state()
-                if state.get("last_first_open_date") != today:
-                    check_first_open_of_day(force=False, reason="First Activity of New Day")
-                else:
-                    check_and_notify(force=False, reason="5-Min Periodic Interval")
+                # 5-minute periodic check
+                trigger_laptop_open_alert(force=False, reason="5-Min Periodic Interval")
                 last_check_time = now
 
         except Exception as e:
-            time.sleep(10)
+            time.sleep(5)
 
 def install_startup():
     """Configures automatic launch on Windows login / laptop open."""
@@ -701,12 +733,12 @@ if __name__ == "__main__":
         sys.exit(0)
     elif "--first-open" in args:
         force_flag = "--force" in args or "-f" in args
-        print("\n☀️ [First Open of Day] Checking first-in-day laptop open trigger...")
-        triggered = check_first_open_of_day(force=force_flag, reason="CLI Test Trigger")
+        print("\n☀️ [Laptop Open Trigger] Checking laptop open alert trigger...")
+        triggered = trigger_laptop_open_alert(force=force_flag, reason="CLI Test Trigger")
         if triggered:
             print("✅ Home screen popup card and Windows Toast launched successfully!\n")
         else:
-            print("ℹ️ Check completed. (No popup required or already completed/recorded for today).\n")
+            print("ℹ️ Check completed. (No popup required or already completed for today).\n")
             print("💡 Use '--force' to test the popup card regardless of status: python unstop_laptop_notifier.py --first-open --force\n")
         sys.exit(0)
     elif "--popup" in args:
@@ -744,28 +776,19 @@ if __name__ == "__main__":
             sys.exit(0)
 
         print(f"⚡ Day {day} is NOT completed yet ({status.upper()})! Firing home screen notification...")
-        send_laptop_toast(
-            f"⚡ Unstop Challenge Day {day} Pending!",
-            f"Hey {user_name}! Day {day} is not solved yet. Keep your {streak}-day streak alive! 🚀",
-            link
-        )
-        print("✅ Notification delivered to your laptop home screen!\n")
+        trigger_laptop_open_alert(force=force_flag, reason="Wake Test")
+        print("✅ Notification and popup delivered to your laptop home screen!\n")
         sys.exit(0)
     elif "--check" in args:
-        check_and_notify(force=False, reason="Command line check")
+        trigger_laptop_open_alert(force=False, reason="Command line check")
         time.sleep(10)
         sys.exit(0)
 
     print("🚀 [Laptop Notifier] Starting Unstop Laptop Home Screen Notifier...")
-    time.sleep(3)  # Wait 3s on initial launch so Windows Explorer / Action Center is ready
+    time.sleep(2)  # Wait 2s on initial launch so Windows Explorer / Action Center is ready
 
-    # First laptop open of the day check
-    today = today_date_str()
-    state = load_notifier_state()
-    if state.get("last_first_open_date") != today:
-        check_first_open_of_day(force=False, reason="Laptop Startup / Logon")
-    else:
-        check_and_notify(force=False, reason="Laptop Startup")
+    # Initial check on startup / logon
+    trigger_laptop_open_alert(force=False, reason="Laptop Startup / Logon")
 
     t_ntfy = threading.Thread(target=ntfy_stream_listener, daemon=True)
     t_ntfy.start()
