@@ -18,7 +18,7 @@ import threading
 import subprocess
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from urllib.parse import urlparse
 
 # Handle stdout/stderr safely for Windows and headless pythonw background service
@@ -683,7 +683,7 @@ def is_today_completed() -> bool:
                 return True
     return False
 
-def is_notification_allowed(force: bool = False) -> Tuple[bool, str]:
+def is_notification_allowed(force: bool = False) -> tuple[bool, str]:
     """
     Strict Notification Policy:
     1. Notification will ONLY pop up on and after 00:00 (midnight IST).
