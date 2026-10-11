@@ -706,18 +706,20 @@ def is_today_completed() -> bool:
     today = today_date_str()
     db = read_db()
     challenges = db.get("challenges", [])
-    
-    # Check if there is an active pending challenge for today - if so, it's NOT completed
-    today_pending = next((c for c in challenges if (c.get("assigned_date") == today or not c.get("assigned_date")) and c.get("status") in ("pending", "upcoming")), None)
-    if today_pending:
-        return False
 
+    # 1. First check if any challenge was solved today
     for c in challenges:
         if c.get("status") == "solved":
             solved_date = (c.get("solved_at") or "").split("T")[0]
             assigned_date = c.get("assigned_date") or ""
             if solved_date == today or assigned_date == today:
                 return True
+
+    # 2. Check if there is an active pending challenge for today
+    today_pending = next((c for c in challenges if c.get("status") == "pending" or (c.get("assigned_date") == today and c.get("status") != "solved")), None)
+    if today_pending:
+        return False
+
     return False
 
 def is_notification_allowed(force: bool = False) -> tuple[bool, str]:

@@ -384,7 +384,7 @@ def get_today_status() -> dict:
 def is_today_completed() -> bool:
     """
     Returns True ONLY if today's challenge is confirmed completed / solved.
-    If today's challenge is pending or upcoming, returns False so reminders fire properly.
+    If today's challenge is pending, returns False so reminders fire properly.
     """
     today = today_date_str()
     # Check database
@@ -394,17 +394,19 @@ def is_today_completed() -> bool:
                 with open(path, "r", encoding="utf-8") as f:
                     db = json.load(f)
                 challenges = db.get("challenges", [])
-                # If today has a pending challenge, it is NOT completed!
-                today_pending = next((c for c in challenges if (c.get("assigned_date") == today or not c.get("assigned_date")) and c.get("status") in ("pending", "upcoming")), None)
-                if today_pending:
-                    return False
 
+                # 1. First check if any challenge was solved today
                 for c in challenges:
                     if c.get("status") == "solved":
                         solved_date = (c.get("solved_at") or "").split("T")[0]
                         assigned_date = c.get("assigned_date") or ""
                         if solved_date == today or assigned_date == today:
                             return True
+
+                # 2. Check if today has a pending challenge
+                today_pending = next((c for c in challenges if c.get("status") == "pending" or (c.get("assigned_date") == today and c.get("status") != "solved")), None)
+                if today_pending:
+                    return False
             except Exception:
                 pass
 
