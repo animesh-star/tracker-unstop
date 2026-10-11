@@ -574,21 +574,37 @@ function renderHistory(challenges = []) {
 
 // ─── Actions: Mark as Solved ──────────────────────────────────────────────────
 async function markSolved() {
+  const solveBtn = document.getElementById('btn-solve');
+  const originalHtml = solveBtn ? solveBtn.innerHTML : '';
+  if (solveBtn) {
+    solveBtn.disabled = true;
+    solveBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Marking as Solved...</span>';
+  }
+
   try {
     const res = await fetch(`${API_BASE}/api/solve`, { method: 'POST' });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({ error: `Server returned status ${res.status}` }));
 
     if (res.ok && data.success) {
-      showToast(`🎉 Streak Maintained! ${data.message}`, 'success');
+      showToast(`🎉 Streak Maintained! ${data.message || 'Challenge solved!'}`, 'success');
       launchConfetti();
       stopCountdown();
       closeModal();
       await loadData();
     } else {
-      showToast('❌ ' + (data.error || data.detail || 'Could not mark solved'), 'error');
+      const errMsg = data.error || data.detail || (res.statusText ? `Error (${res.status}): ${res.statusText}` : 'Could not mark solved');
+      showToast('❌ ' + errMsg, 'error');
+      if (solveBtn) {
+        solveBtn.disabled = false;
+        solveBtn.innerHTML = originalHtml || '<span class="btn-icon">✅</span><span>Mark as Solved!</span>';
+      }
     }
   } catch (err) {
     showToast('❌ Server error: ' + err.message, 'error');
+    if (solveBtn) {
+      solveBtn.disabled = false;
+      solveBtn.innerHTML = originalHtml || '<span class="btn-icon">✅</span><span>Mark as Solved!</span>';
+    }
   }
 }
 

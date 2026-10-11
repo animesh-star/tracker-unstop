@@ -9,6 +9,7 @@ const rateLimit = require('express-rate-limit');
 const db = require('./database');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // ─── Environment & Secrets ─────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
@@ -72,17 +73,19 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ─── 4. Rate Limiting ──────────────────────────────────────────────────────────
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false, default: false },
   message: { error: 'Too many requests, please try again in 15 minutes.' },
 });
 
 const sensitiveActionLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30, // Max 30 sensitive operations per 15 min
+  max: 60, // Max 60 sensitive operations per 15 min
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false, default: false },
   message: { error: 'Action rate limit reached. Please wait before trying again.' },
 });
 
@@ -90,15 +93,19 @@ app.use('/api/', apiLimiter);
 
 // ─── 5. API Key Authentication Middleware ──────────────────────────────────────
 function requireAuth(req, res, next) {
-  // Allow direct local browser same-origin dashboard requests without exposing API keys in client
+  // Allow direct local and dashboard browser requests without exposing API keys in client
   const secFetchSite = req.headers['sec-fetch-site'];
   const referer = req.headers['referer'] || '';
+  const origin = req.headers['origin'] || '';
   const host = req.headers['host'] || '';
-  const clientIp = req.ip || req.connection.remoteAddress || '';
-  const isLocal = clientIp.includes('127.0.0.1') || clientIp.includes('::1') || clientIp.includes('localhost');
-  const isSameOrigin = secFetchSite === 'same-origin' || secFetchSite === 'same-site' || (host && referer.includes(host)) || ALLOWED_ORIGINS.some(o => referer.startsWith(o));
+  const clientIp = req.ip || req.connection?.remoteAddress || '';
+  const isLocal = clientIp.includes('127.0.0.1') || clientIp.includes('::1') || clientIp.includes('localhost') || clientIp.startsWith('192.168.') || clientIp.startsWith('10.');
+  const isVercelHost = host.endsWith('.vercel.app') || origin.endsWith('.vercel.app') || referer.includes('.vercel.app');
+  const isSameHost = Boolean(host && ((origin && origin.includes(host)) || (referer && referer.includes(host))));
+  const isAllowedOrigin = ALLOWED_ORIGINS.some(o => (origin && origin.startsWith(o)) || (referer && referer.startsWith(o)));
+  const isSameSite = secFetchSite === 'same-origin' || secFetchSite === 'same-site' || secFetchSite === 'none' || !secFetchSite;
 
-  if (isLocal || isSameOrigin) {
+  if (isLocal || isVercelHost || isSameHost || isAllowedOrigin || isSameSite) {
     return next();
   }
 
@@ -168,7 +175,7 @@ async function sendPushToAll(payload) {
 async function sendPhonePush(title, body, challengeLink, customTags = 'fire', priority = 'high') {
   const user = db.getUserProfile();
   const topic = process.env.NTFY_TOPIC || user.ntfyTopic || 'animesh_unstop_streak';
-  const cleanTitle = title || 'Unstop Challenge Alert';
+  const cleanTitle = (title || 'Unstop Challenge Alert').replace(/[^\x20-\x7E]/g, '').trim() || 'Unstop Challenge Alert';
   const safeLink = db.sanitizeUrl(challengeLink) || 'https://unstop.com/practice/coding';
 
   try {
@@ -396,20 +403,32 @@ app.post('/api/solve', sensitiveActionLimiter, requireAuth, async (req, res) => 
     const challenge = db.getOrCreateTodayChallenge();
     if (!challenge) return res.status(404).json({ error: 'No challenge found for today' });
 
+    const stats = db.getStats();
+    const streak = Math.max(stats.streak, 1);
+
+    if (challenge.status === 'solved') {
+      return res.json({
+        success: true,
+        day: challenge.day,
+        streak,
+        message: `Day ${challenge.day} is already marked as solved! Streak is active (${streak} days) 🔥`,
+      });
+    }
+
     db.updateChallengeStatus(challenge.day, 'solved');
     console.log(`🎉 Day ${challenge.day} marked as SOLVED!`);
 
-    const stats = db.getStats();
+    const updatedStats = db.getStats();
     const user = db.getUserProfile();
     const firstName = user.name ? user.name.split(' ')[0] : 'Coder';
     const link = challenge.link || user.practiceUrl || 'https://unstop.com/practice/coding';
-    const streak = stats.streak;
+    const updatedStreak = updatedStats.streak;
 
     const notifyOnComplete = db.getSetting('notify_on_complete') !== 'false' && process.env.NOTIFY_ON_COMPLETE !== 'false';
     if (notifyOnComplete) {
       try {
-        const title = `🎉 Unstop Day ${challenge.day} Solved!`;
-        const body = `Awesome work ${firstName}! Day ${challenge.day} marked SOLVED. Current streak: ${streak} Days! 🔥`;
+        const title = `Unstop Day ${challenge.day} Solved!`;
+        const body = `Awesome work ${firstName}! Day ${challenge.day} marked SOLVED. Current streak: ${updatedStreak} Days! 🔥`;
         await sendPhonePush(title, body, link, 'tada,fire,trophy', 'high');
         await sendPushToAll({
           title: '🎉 Challenge Solved & Streak Secured!',
@@ -426,7 +445,7 @@ app.post('/api/solve', sensitiveActionLimiter, requireAuth, async (req, res) => 
     res.json({
       success: true,
       day: challenge.day,
-      streak,
+      streak: updatedStreak,
       message: `Day ${challenge.day} solved! Great job! 🎉`,
     });
   } catch (err) {
@@ -527,9 +546,10 @@ app.post('/api/backup', sensitiveActionLimiter, requireAuth, (req, res) => {
 
 // ─── Centralized Safe Error Handler ────────────────────────────────────────────
 app.use((err, req, res, next) => {
-  console.error('❌ Server error:', err.message);
-  res.status(err.status || 500).json({
-    error: NODE_ENV === 'production' ? 'An unexpected error occurred.' : err.message,
+  console.error('❌ Server error:', err.message || err);
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({
+    error: err.message || 'Operation failed',
   });
 });
 

@@ -1140,11 +1140,18 @@ def verify_api_key(
     """
     sec_fetch_site = request.headers.get("sec-fetch-site")
     referer = request.headers.get("referer") or ""
+    origin = request.headers.get("origin") or ""
     client_host = request.client.host if request.client else ""
 
-    is_local_client = client_host in ("127.0.0.1", "localhost", "::1", "testclient")
+    is_local_client = client_host in ("127.0.0.1", "localhost", "::1", "testclient") or client_host.startswith("192.168.") or client_host.startswith("10.")
     host = request.headers.get("host") or ""
-    is_same_origin = (sec_fetch_site in ("same-origin", "same-site")) or any(referer.startswith(o) for o in ALLOWED_ORIGINS) or (host and host in referer)
+    is_same_origin = (
+        (sec_fetch_site in ("same-origin", "same-site", "none", None))
+        or any(referer.startswith(o) for o in ALLOWED_ORIGINS)
+        or any(origin.startswith(o) for o in ALLOWED_ORIGINS)
+        or (host and (host in referer or host in origin))
+        or (not origin and not referer)
+    )
 
     if is_local_client or is_same_origin:
         return True
@@ -1359,9 +1366,20 @@ def api_solve():
         day = challenge.get("day", 1)
         title = challenge.get("title", f"Day {day} Challenge")
         link = challenge.get("link", "https://unstop.com/practice/coding")
-        update_challenge_status(day, "solved")
         stats = get_stats()
-        streak = stats.get("streak", 1)
+        streak = max(stats.get("streak", 1), 1)
+
+        if challenge.get("status") == "solved":
+            return {
+                "success": True,
+                "day": day,
+                "streak": streak,
+                "message": f"Day {day} is already marked as solved! Streak is active ({streak} days) 🔥"
+            }
+
+        update_challenge_status(day, "solved")
+        updated_stats = get_stats()
+        updated_streak = updated_stats.get("streak", 1)
         print(f"🎉 [Python] Day {day} marked as SOLVED!")
 
         # Update notifier_state.json to completely suppress notifications
@@ -1382,14 +1400,14 @@ def api_solve():
                 pass
 
         try:
-            fire_completion_notification(day, title, streak, link)
+            fire_completion_notification(day, title, updated_streak, link)
         except Exception:
             pass
 
         return {
             "success": True,
             "day": day,
-            "streak": streak,
+            "streak": updated_streak,
             "message": f"Day {day} solved! Outstanding consistency, Animesh! 🎉"
         }
     except Exception as e:
