@@ -48,12 +48,15 @@ def clean_problem_title(raw_title: Optional[str], url: Optional[str] = None) -> 
             idx = title.lower().find(delimiter.lower())
             title = title[:idx].strip()
 
+    # If title mentions Coding Practice Platform
+    if "coding practice platform" in (raw_title or "").lower() or (url and "practice/coding" in url):
+        return "Coding Practice Platform for Placements & Interviews"
+
     # If title is empty or generic site marketing title
     is_generic = (
         not title 
         or "Competitions, Quizzes" in title 
         or "Internships for Students" in title
-        or "Coding Practice Platform" in title
         or title == "Unstop"
     )
 
@@ -63,9 +66,9 @@ def clean_problem_title(raw_title: Optional[str], url: Optional[str] = None) -> 
             prob_id = parts[-1] if parts else ""
             if prob_id.isdigit():
                 return f"Practice Problem #{prob_id}"
-        return "Unstop Coding Challenge"
+        return "Coding Practice Platform for Placements & Interviews"
 
-    return title or "Unstop Coding Challenge"
+    return title or "Coding Practice Platform for Placements & Interviews"
 
 def get_browser_history_candidates() -> List[Path]:
     """Returns potential Chrome and Edge history paths on Windows."""
@@ -127,11 +130,11 @@ def fetch_unstop_activity_for_date(target_date: Optional[str] = None) -> Optiona
 
                 if date_str == target_date:
                     is_specific_code = "/code/practice/" in url and any(char.isdigit() for char in url.split("/")[-1])
+                    is_practice_portal = "unstop.com/practice/coding" in url or "practice/coding" in url
                     cleaned = clean_problem_title(title, url=url)
                     duration_sec = (duration or 0) / 1_000_000
 
-                    # Only consider specific coding practice problems with an ID
-                    if is_specific_code:
+                    if is_specific_code or is_practice_portal:
                         match_data = {
                             "url": url,
                             "raw_title": title,
@@ -140,11 +143,15 @@ def fetch_unstop_activity_for_date(target_date: Optional[str] = None) -> Optiona
                             "timestamp": dt_ist.timestamp(),
                             "duration_sec": duration_sec,
                             "visit_count": count,
-                            "is_specific": True,
+                            "is_specific": is_specific_code,
                             "browser": "Chrome" if "Google" in str(hp) else "Edge"
                         }
 
-                        if not best_match or match_data["timestamp"] > best_match["timestamp"]:
+                        if not best_match:
+                            best_match = match_data
+                        elif is_specific_code and not best_match.get("is_specific"):
+                            best_match = match_data
+                        elif (is_specific_code == best_match.get("is_specific", False)) and match_data["timestamp"] > best_match["timestamp"]:
                             best_match = match_data
 
         except Exception as e:
@@ -222,16 +229,20 @@ def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved:
         was_already_solved = (target_challenge.get("status") == "solved")
 
         # Update problem details with actual fetched specific challenge title & url from Unstop
-        if activity.get('title') and activity['title'] != "Unstop Coding Challenge":
-            new_title = f"Day {day}: {activity['title']}" if not activity['title'].startswith(f"Day {day}") else activity['title']
-            target_challenge["title"] = new_title
+        if activity.get('title') and activity['title'] not in ("Unstop", "Unstop Coding Challenge"):
+            curr_title = target_challenge.get("title", "")
+            has_specific_title = bool(curr_title and ":" in curr_title and "Coding Challenge" not in curr_title and "Coding Practice Platform" not in curr_title)
+            if activity.get("is_specific") or not has_specific_title:
+                new_title = f"Day {day}: {activity['title']}" if not activity['title'].startswith(f"Day {day}") else activity['title']
+                target_challenge["title"] = new_title
         elif not target_challenge.get("title") or "Coding Challenge" in target_challenge.get("title"):
             prob_id = activity.get('url', '').split('/')[-1]
             if prob_id.isdigit():
                 target_challenge["title"] = f"Day {day}: Practice Problem #{prob_id}"
 
         new_title = target_challenge.get("title", f"Day {day} Challenge")
-        target_challenge["link"] = activity["url"]
+        if activity.get("is_specific") or not target_challenge.get("link"):
+            target_challenge["link"] = activity["url"]
 
         # Only change status to solved if explicitly requested
         if mark_solved and not was_already_solved:

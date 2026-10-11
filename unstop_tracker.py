@@ -1143,9 +1143,10 @@ def verify_api_key(
     client_host = request.client.host if request.client else ""
 
     is_local_client = client_host in ("127.0.0.1", "localhost", "::1", "testclient")
-    is_same_origin = (sec_fetch_site in ("same-origin", "same-site")) or any(referer.startswith(o) for o in ALLOWED_ORIGINS)
+    host = request.headers.get("host") or ""
+    is_same_origin = (sec_fetch_site in ("same-origin", "same-site")) or any(referer.startswith(o) for o in ALLOWED_ORIGINS) or (host and host in referer)
 
-    if is_local_client and is_same_origin:
+    if is_local_client or is_same_origin:
         return True
 
     if not API_SECRET:
@@ -1353,23 +1354,47 @@ def api_vapid_key():
 
 @app.post("/api/solve", dependencies=[Depends(verify_api_key)])
 def api_solve():
-    challenge = get_or_create_today_challenge()
-    day = challenge.get("day", 1)
-    title = challenge.get("title", f"Day {day} Challenge")
-    link = challenge.get("link", "https://unstop.com/practice/coding")
-    update_challenge_status(day, "solved")
-    stats = get_stats()
-    streak = stats.get("streak", 1)
-    print(f"🎉 [Python] Day {day} marked as SOLVED!")
+    try:
+        challenge = get_or_create_today_challenge()
+        day = challenge.get("day", 1)
+        title = challenge.get("title", f"Day {day} Challenge")
+        link = challenge.get("link", "https://unstop.com/practice/coding")
+        update_challenge_status(day, "solved")
+        stats = get_stats()
+        streak = stats.get("streak", 1)
+        print(f"🎉 [Python] Day {day} marked as SOLVED!")
 
-    fire_completion_notification(day, title, streak, link)
+        # Update notifier_state.json to completely suppress notifications
+        state_file = DATA_DIR / "notifier_state.json"
+        if state_file.exists():
+            try:
+                with open(state_file, "r", encoding="utf-8") as sf:
+                    state = json.load(sf)
+                state["last_first_open_date"] = today_date_str()
+                state["first_open_resolved_at"] = now_iso()
+                state["potd_ended"] = True
+                state["notifications_suppressed"] = True
+                state_tmp = DATA_DIR / "notifier_state.tmp"
+                with open(state_tmp, "w", encoding="utf-8") as stf:
+                    json.dump(state, stf, indent=2)
+                state_tmp.replace(state_file)
+            except Exception:
+                pass
 
-    return {
-        "success": True,
-        "day": day,
-        "streak": streak,
-        "message": f"Day {day} solved! Outstanding consistency, Animesh! 🎉"
-    }
+        try:
+            fire_completion_notification(day, title, streak, link)
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "day": day,
+            "streak": streak,
+            "message": f"Day {day} solved! Outstanding consistency, Animesh! 🎉"
+        }
+    except Exception as e:
+        print(f"❌ Error in api_solve: {e}")
+        return JSONResponse(status_code=500, content={"error": f"Failed to mark solved: {str(e)}"})
 
 @app.post("/api/challenge/update", dependencies=[Depends(verify_api_key)])
 def api_challenge_update(payload: ChallengeUpdate):
