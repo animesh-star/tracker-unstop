@@ -514,27 +514,39 @@ app.post('/api/test-complete', sensitiveActionLimiter, requireAuth, async (req, 
 
 app.post('/api/test-phone-notify', sensitiveActionLimiter, requireAuth, async (req, res) => {
   try {
-    const challenge = db.getOrCreateTodayChallenge();
-    const force = Boolean(req.query.force || (req.body && req.body.force));
-    if (challenge && challenge.status === 'solved' && !force) {
-      return res.json({
-        success: false,
-        skipped: true,
-        message: `Day ${challenge.day} is already solved! Notification skipped.`,
-      });
-    }
-
     const user = db.getUserProfile();
+    const firstName = user.name ? user.name.split(' ')[0] : 'Animesh';
     const topic = process.env.NTFY_TOPIC || user.ntfyTopic || 'animesh_unstop_streak';
+    const title = `Phone Test Alert for ${firstName}`;
+    const body = `Hey ${firstName}! Your streak alerts are active & connected! Every night at 12:00 AM & every 5 min until you solve your challenge, you will be alerted here! 🔥`;
+
     await sendPhonePush(
-      `🔔 Phone Test Alert for ${user.name.split(' ')[0]}!`,
-      `Your phone alerts are ready! Every night at 12:00 AM & every 5 min until you solve your Unstop challenge, you'll be alerted here! 🚀`,
+      title,
+      body,
       user.practiceUrl || 'https://unstop.com/practice/coding',
-      false
+      'bell,fire',
+      'high'
     );
-    res.json({ success: true, topic });
+    res.json({ success: true, topic, message: 'Test mobile alert delivered!' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to send phone alert' });
+    console.error('❌ test-phone-notify error:', err);
+    res.status(500).json({ error: 'Failed to send phone alert: ' + (err.message || 'unknown error') });
+  }
+});
+
+app.post('/api/test-first-open', sensitiveActionLimiter, requireAuth, (req, res) => {
+  try {
+    const notifierScript = path.join(__dirname, 'unstop_laptop_notifier.py');
+    const pythonExe = process.platform === 'win32' ? 'pythonw.exe' : 'python3';
+    const child = require('child_process').spawn(pythonExe, [notifierScript, '--first-open', '--force'], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    child.unref();
+    res.json({ success: true, message: 'Home screen alert triggered!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Failed to trigger home screen alert' });
   }
 });
 

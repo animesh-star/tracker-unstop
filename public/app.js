@@ -209,20 +209,6 @@ async function refreshData() {
   showToast('🔄 Streak status refreshed!', 'info');
 }
 
-async function sendTestPhoneAlert() {
-  try {
-    const res = await fetch(`${API_BASE}/api/test-phone-notify`, { method: 'POST' });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      showToast(`📱 Mobile alert sent to topic: ${data.topic}`, 'success');
-    } else {
-      showToast('❌ Failed to send mobile alert', 'error');
-    }
-  } catch (err) {
-    showToast('❌ Mobile alert error: ' + err.message, 'error');
-  }
-}
-
 // ─── 1. Duolingo Flame Hero & Warning Banner Rendering ────────────────────────
 function renderDuolingoStreak(stats, challenge, user) {
   const streak = stats?.streak || 0;
@@ -786,7 +772,7 @@ async function sendTestPhoneAlert() {
     if (res.ok && data.success) {
       showToast(`✅ Mobile alert delivered to topic: ${data.topic}`, 'success');
     } else {
-      showToast('❌ Mobile notification failed', 'error');
+      showToast('❌ Mobile notification failed: ' + (data.error || data.detail || 'Could not send'), 'error');
     }
   } catch (err) {
     showToast('❌ Server error: ' + err.message, 'error');
