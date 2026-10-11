@@ -993,35 +993,13 @@ def scheduler_loop():
                         fire_reminder(is_repeat=False)
                     last_midnight_checked = current_date_str
 
-            # Pre-Break Warning triggers at 8:00 PM (20), 10:00 PM (22), and 11:00 PM (23) IST
-            if now.hour in (20, 22, 23) and now.minute == 0:
+            # Evening Streak Warning at 10:00 PM (22:00) IST before midnight deadline
+            if now.hour == 22 and now.minute == 0:
                 warning_key = f"{current_date_str}-{now.hour}"
                 if last_warning_hour != warning_key:
-                    if auto_sync_and_mark_completed:
-                        try:
-                            auto_sync_and_mark_completed()
-                        except Exception:
-                            pass
-                    challenge = get_or_create_today_challenge()
-                    if challenge and challenge.get("status") == "pending":
+                    if not is_today_completed():
                         fire_streak_warning(force=False)
                     last_warning_hour = warning_key
-
-            # 5-minute Escalation Repeats: ONLY IF task is still pending and NOT completed on Unstop
-            if now.minute % 5 == 0 and now.second < 15:
-                if auto_sync_and_mark_completed:
-                    try:
-                        auto_sync_and_mark_completed()
-                    except Exception:
-                        pass
-                challenge = get_or_create_today_challenge()
-                if challenge and challenge.get("status") == "pending":
-                    reminded_at = challenge.get("reminded_at")
-                    if reminded_at:
-                        r_date = reminded_at.split("T")[0]
-                        if r_date == current_date_str:
-                            fire_reminder(is_repeat=True)
-                            time.sleep(20)
 
             time.sleep(5)
         except Exception as err:

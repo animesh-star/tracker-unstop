@@ -1011,31 +1011,8 @@ def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") 
         toast_body = f"Hey {user_name}! Day {day} is not solved yet. Keep your {streak}-day streak alive! {streak_remaining} tasks left for 30-day goal."
         toast_subtext = f"🔥 Streak: {streak}d ({started_str}) • {streak_remaining} Tasks Remaining • Best: {safe_best}d"
 
+    # Push exactly ONE notification at once
     send_laptop_toast(toast_title, toast_body, link, subtext=toast_subtext, force=force)
-
-    # 2. Directly Pop Up Desktop Interactive GUI Card
-    popup_payload = {
-        "day": day,
-        "title": title,
-        "streak": streak,
-        "link": link,
-        "user_name": user_name,
-        "is_first_open": is_first_open,
-        "is_broken": is_broken,
-        "last_broken_day": last_broken_day,
-        "last_broken_streak": last_broken_streak,
-        "remaining_days": remaining_days,
-        "total_days": total_days,
-        "best_streak": safe_best,
-        "streak_started_date": streak_started_date,
-        "streak_started_day": streak_started_day,
-        "streak_days_running": streak_days_running,
-        "streak_remaining": streak_remaining,
-        "status": status,
-        "solved_count": stats.get("solved", 12),
-        "missed_count": stats.get("missed", 1)
-    }
-    launch_gui_popup(popup_payload)
 
     return True
 
