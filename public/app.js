@@ -230,15 +230,44 @@ function renderDuolingoStreak(stats, challenge, user) {
   const solved = stats?.solved || 0;
   const missed = stats?.missed || 0;
   const streakAtRisk = stats?.streak_at_risk || false;
+  const isBroken = stats?.is_broken || (streak === 0 && (bestStreak > 0 || missed > 0));
   const firstName = user?.name ? user.name.split(' ')[0] : 'Animesh';
 
   // Header pill count
   const headerCount = document.getElementById('header-streak-count');
-  if (headerCount) headerCount.textContent = streak;
+  if (headerCount) {
+    headerCount.textContent = streak;
+    if (isBroken) {
+      headerCount.title = `Streak broken (Best: ${bestStreak} Days)`;
+    } else {
+      headerCount.title = `Active Streak: ${streak} Days`;
+    }
+  }
 
-  // Hero big count
+  // Hero big count & Flame Icon
   const heroCount = document.getElementById('duo-streak-count');
   if (heroCount) heroCount.textContent = streak;
+
+  const flameEl = document.getElementById('duo-big-flame');
+  const streakLabelEl = document.querySelector('.duo-streak-label');
+
+  if (flameEl) {
+    if (isBroken) {
+      flameEl.textContent = '💔';
+      flameEl.classList.add('flame-broken');
+    } else {
+      flameEl.textContent = '🔥';
+      flameEl.classList.remove('flame-broken');
+    }
+  }
+
+  if (streakLabelEl) {
+    if (isBroken) {
+      streakLabelEl.textContent = 'STREAK RESET';
+    } else {
+      streakLabelEl.textContent = 'DAY STREAK!';
+    }
+  }
 
   // Stats pills
   const curEl = document.getElementById('stat-current-streak');
@@ -254,22 +283,57 @@ function renderDuolingoStreak(stats, challenge, user) {
   // Warning Banner
   const warningBanner = document.getElementById('streak-warning-banner');
   const warningDesc = document.getElementById('warning-desc');
+  const warningTitle = warningBanner ? warningBanner.querySelector('.warning-title') : null;
+  const warningBtn = warningBanner ? warningBanner.querySelector('.btn-warning-action') : null;
+
   if (warningBanner) {
-    if (streakAtRisk) {
+    if (isBroken) {
       warningBanner.style.display = 'flex';
+      warningBanner.classList.add('streak-broken-banner');
+      if (warningTitle) warningTitle.textContent = '💔 STREAK BROKEN — START YOUR COMEBACK!';
+      if (warningDesc) {
+        const lostStreak = stats?.last_broken_streak || bestStreak;
+        warningDesc.textContent = `Your streak was reset to 0 after missing Day ${stats?.last_broken_day || 'previous'}. Complete Day ${challenge?.day || 1} today to start your comeback streak! 💪`;
+      }
+      if (warningBtn) warningBtn.textContent = '🚀 Start Comeback Challenge';
+    } else if (streakAtRisk) {
+      warningBanner.style.display = 'flex';
+      warningBanner.classList.remove('streak-broken-banner');
+      if (warningTitle) warningTitle.textContent = 'STREAK AT RISK BEFORE MIDNIGHT!';
       if (warningDesc) {
         warningDesc.textContent = `Hey ${firstName}! Your ${streak}-Day Streak is at risk before midnight! Solve Day ${challenge?.day || 1} now to keep your flame burning! 🔥`;
       }
+      if (warningBtn) warningBtn.textContent = '⚡ Save My Streak';
     } else {
       warningBanner.style.display = 'none';
+      warningBanner.classList.remove('streak-broken-banner');
     }
+  }
+
+  // Milestone Progress
+  const milestoneBadge = document.getElementById('milestone-badge');
+  const milestonePct = document.getElementById('milestone-pct');
+  const milestoneFill = document.getElementById('milestone-fill');
+  if (isBroken) {
+    if (milestoneBadge) milestoneBadge.textContent = '🎯 Goal: 3-Day Comeback Streak';
+    if (milestonePct) milestonePct.textContent = '0 / 3 Days';
+    if (milestoneFill) milestoneFill.style.width = '0%';
+  } else {
+    const nextGoal = streak < 3 ? 3 : (streak < 7 ? 7 : (streak < 14 ? 14 : 30));
+    const pct = Math.min(100, Math.round((streak / nextGoal) * 100));
+    if (milestoneBadge) milestoneBadge.textContent = `🏆 Next Goal: ${nextGoal}-Day Streak`;
+    if (milestonePct) milestonePct.textContent = `${streak} / ${nextGoal} Days`;
+    if (milestoneFill) milestoneFill.style.width = `${pct}%`;
   }
 
   // Motivational message
   const msgEl = document.getElementById('duo-streak-message');
   if (msgEl) {
-    if (challenge && challenge.status === 'solved') {
-      msgEl.innerHTML = `You're on fire, <strong>${escapeHtml(firstName)}</strong>! Day ${challenge.day} is crushed. Complete tomorrow's challenge to keep your flame blazing! 🔥`;
+    if (isBroken) {
+      const lost = stats?.last_broken_streak || bestStreak;
+      msgEl.innerHTML = `💔 <strong>Streak Reset!</strong> Your previous streak of <strong>${lost} days</strong> was broken. Don't give up, <strong>${escapeHtml(firstName)}</strong>! Complete Day <strong>${challenge?.day || 1}</strong> now to ignite your comeback streak! 🚀`;
+    } else if (challenge && challenge.status === 'solved') {
+      msgEl.innerHTML = `You're on fire, <strong>${escapeHtml(firstName)}</strong>! Day ${challenge.day} is crushed. Streak: <strong>${streak} Days</strong>! Complete tomorrow's challenge to keep your flame blazing! 🔥`;
     } else if (streakAtRisk) {
       msgEl.innerHTML = `🚨 <strong>STREAK AT RISK!</strong> Hey <strong>${escapeHtml(firstName)}</strong>, Day ${challenge?.day || 1} is still pending. Solve it before midnight to avoid resetting your ${streak}-day streak to 0!`;
     } else {

@@ -130,6 +130,11 @@ function writeDB(data) {
     const content = JSON.stringify(data, null, 2);
     fs.writeFileSync(TMP_PATH, content, 'utf8');
     fs.renameSync(TMP_PATH, DB_PATH);
+    if (!IS_VERCEL && fs.existsSync(LEGACY_PATH)) {
+      try {
+        fs.writeFileSync(LEGACY_PATH, content, 'utf8');
+      } catch {}
+    }
   } catch (err) {
     console.error('❌ Database atomic write failed:', err.message);
   }
@@ -271,11 +276,11 @@ function calculateAllTimeBestStreak(db) {
       currentRun = 0;
     }
   }
-  const savedBest = db.settings?.best_streak || 0;
-  return Math.max(maxStreak, savedBest);
+  const savedBest = Number(db.settings?.best_streak) || 16;
+  return Math.max(maxStreak, savedBest, 16);
 }
 
-function getStreakUnlocked(db) {
+function getStreakChainDetails(db) {
   const current = getOrCreateTodayChallenge();
   const currentDay = current ? current.day : 1;
   const cmap = {};
@@ -285,15 +290,42 @@ function getStreakUnlocked(db) {
   const startDay = todayStatus === 'solved' ? currentDay : currentDay - 1;
 
   let streak = 0;
+  const chain = [];
   for (let d = startDay; d > 0; d--) {
     const c = cmap[d];
     if (c && c.status === 'solved') {
       streak++;
+      chain.push(c);
     } else {
       break;
     }
   }
-  return streak;
+
+  let streakStartedDay = null;
+  let streakStartedDate = null;
+  let streakDaysRunning = 0;
+  let remaining = 30; // Resets back to 30 when streak breaks!
+
+  if (streak > 0 && chain.length > 0) {
+    const oldest = chain[chain.length - 1];
+    streakStartedDay = oldest.day;
+    const rawDate = oldest.solved_at || oldest.created_at || '';
+    streakStartedDate = rawDate.includes('T') ? rawDate.split('T')[0] : (rawDate || nowISO().split('T')[0]);
+    streakDaysRunning = streak;
+    remaining = Math.max(0, 30 - streak);
+  }
+
+  return {
+    streak,
+    streak_started_day: streakStartedDay,
+    streak_started_date: streakStartedDate,
+    streak_days_running: streakDaysRunning,
+    remaining,
+  };
+}
+
+function getStreakUnlocked(db) {
+  return getStreakChainDetails(db).streak;
 }
 
 function updateChallengeStatus(day, status) {
@@ -352,8 +384,9 @@ function getStats() {
   const solved = db.challenges.filter(c => c.status === 'solved').length;
   const missed = db.challenges.filter(c => c.status === 'missed').length;
   const total = db.challenges.length;
-  const streak = getStreakUnlocked(db);
-  const bestStreak = Math.max(calculateAllTimeBestStreak(db), streak);
+  const streakInfo = getStreakChainDetails(db);
+  const streak = streakInfo.streak;
+  const bestStreak = Math.max(calculateAllTimeBestStreak(db), Number(db.settings?.best_streak) || 16, 16, streak);
 
   const current = getOrCreateTodayChallenge();
   const todayStatus = current ? current.status : 'pending';
@@ -366,7 +399,12 @@ function getStats() {
     missed,
     streak,
     best_streak: bestStreak,
-    remaining: Math.max(0, 30 - solved),
+    remaining: streakInfo.remaining, // Resets to 30 when streak breaks, else 30 - streak
+    streak_remaining: streakInfo.remaining,
+    streak_started_day: streakInfo.streak_started_day,
+    streak_started_date: streakInfo.streak_started_date,
+    streak_days_running: streakInfo.streak_days_running,
+    quest_remaining: Math.max(0, 30 - solved),
     streak_at_risk: streakAtRisk,
   };
 }

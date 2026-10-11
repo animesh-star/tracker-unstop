@@ -899,3 +899,30 @@ body {
   border: 1px solid rgba(235, 68, 68, 0.3) !important;
 }
 
+/* ─── Broken Streak Visual States ────────────────────────────────────────────── */
+.duo-big-flame.flame-broken {
+  filter: grayscale(0.6) drop-shadow(0 0 15px rgba(255, 75, 75, 0.4));
+  animation: brokenPulse 2.5s ease-in-out infinite;
+}
+@keyframes brokenPulse {
+  0%, 100% { transform: scale(0.95); opacity: 0.85; }
+  50% { transform: scale(1.05); opacity: 1; }
+}
+.streak-warning-banner.streak-broken-banner {
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.25), rgba(239, 68, 68, 0.2)) !important;
+  border-color: #a855f7 !important;
+  box-shadow: 0 0 25px rgba(168, 85, 247, 0.3) !important;
+  animation: pulseWarning 3s ease-in-out infinite;
+}
+.streak-warning-banner.streak-broken-banner .warning-title {
+  color: #c084fc !important;
+}
+.streak-warning-banner.streak-broken-banner .btn-warning-action {
+  background: linear-gradient(135deg, #a855f7, #ef4444) !important;
+}
+.duo-day-circle.day-missed {
+  background: rgba(239, 68, 68, 0.2) !important;
+  border-color: #ef4444 !important;
+  color: #ef4444 !important;
+}
+

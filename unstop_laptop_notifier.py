@@ -52,6 +52,12 @@ if ENV_FILE.exists():
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
+try:
+    from unstop_sync import auto_sync_and_mark_completed, fetch_unstop_activity_for_date
+except ImportError:
+    auto_sync_and_mark_completed = None
+    fetch_unstop_activity_for_date = None
+
 popup_active = False
 popup_lock = threading.Lock()
 snooze_until = 0
@@ -69,6 +75,27 @@ def is_workstation_locked() -> bool:
             user32.CloseDesktop(hdesk)
             return False
         return True
+    except Exception:
+        return False
+
+def is_popup_window_open() -> bool:
+    """Checks whether the GUI popup window is already active on screen."""
+    lock_file = DATA_DIR / "popup_open.lock"
+    if not lock_file.exists():
+        return False
+    try:
+        with open(lock_file, "r", encoding="utf-8") as f:
+            pid = int(f.read().strip())
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if handle:
+            kernel32.CloseHandle(handle)
+            return True
+        else:
+            lock_file.unlink(missing_ok=True)
+            return False
     except Exception:
         return False
 
@@ -178,26 +205,83 @@ def save_notifier_state(state: dict):
         print(f"Error saving notifier state: {e}")
 
 def get_today_status() -> dict:
-    """Checks challenges.json or localhost API to get today's task and streak."""
+    """Checks challenges.json or localhost API to get today's task, streak, and broken streak details."""
+    # First: Auto-sync from browser activity (detect if task was solved on Unstop without clicking notification)
+    if auto_sync_and_mark_completed:
+        try:
+            auto_sync_and_mark_completed()
+        except Exception:
+            pass
+
+    data = None
     try:
         res = requests.get("http://localhost:3000/api/today", timeout=2)
         if res.status_code == 200:
             data = res.json()
-            return {
-                "challenge": data.get("challenge", {}),
-                "stats": data.get("stats", {}),
-                "user": data.get("user", {})
-            }
     except Exception:
         pass
 
-    if DB_PATH.exists():
+    if data and "challenge" in data and "stats" in data:
+        c = data.get("challenge", {})
+        s = data.get("stats", {})
+        u = data.get("user", {})
+
+        cur_day = c.get("day", 1)
+        cur_day = c.get("day", 1)
+        remaining_days = max(1, 30 - cur_day + 1)
+        remaining_range = f"Day {cur_day} to 30"
+        streak = s.get("streak", 0)
+        best_streak = max(s.get("best_streak", 16), 16)
+        missed = s.get("missed", 0)
+        streak_breaks = s.get("streak_breaks", [])
+
+        is_broken = s.get("is_broken")
+        if is_broken is None:
+            is_broken = (streak == 0 and (s.get("last_broken_streak", 0) > 0 or s.get("last_broken_day") is not None or missed > 0 or best_streak > 0 or cur_day > 1))
+
+        last_broken_day = s.get("last_broken_day")
+        if last_broken_day is None:
+            if streak_breaks:
+                last_broken_day = streak_breaks[-1].get("day")
+            elif s.get("missed_days"):
+                last_broken_day = s.get("missed_days")[-1]
+            elif is_broken and cur_day > 1:
+                last_broken_day = cur_day - 1
+
+        last_broken_streak = s.get("last_broken_streak", 0)
+        if not last_broken_streak and streak_breaks:
+            last_broken_streak = streak_breaks[-1].get("streak_lost", best_streak)
+        if not last_broken_streak and is_broken:
+            last_broken_streak = best_streak
+
+        streak_remaining = 30 if (streak == 0 or is_broken) else max(0, 30 - streak)
+
+        s["is_broken"] = bool(is_broken)
+        s["last_broken_day"] = last_broken_day
+        s["last_broken_streak"] = last_broken_streak
+        s["remaining_days"] = remaining_days
+        s["remaining_range"] = remaining_range
+        s["total_days"] = 30
+        s["best_streak"] = best_streak
+        s["streak_remaining"] = streak_remaining
+        s["remaining"] = streak_remaining
+
+        return {
+            "challenge": c,
+            "stats": s,
+            "user": u or {"name": "Animesh Goswami"}
+        }
+
+    # Fallback to local challenges.json
+    db_file = DB_PATH if DB_PATH.exists() else (BASE_DIR / "challenges.json")
+    if db_file.exists():
         try:
-            with open(DB_PATH, "r", encoding="utf-8") as f:
+            with open(db_file, "r", encoding="utf-8") as f:
                 db = json.load(f)
             challenges = db.get("challenges", [])
+            settings = db.get("settings", {})
             user = {}
-            raw_user = db.get("settings", {}).get("user_profile")
+            raw_user = settings.get("user_profile")
             if raw_user:
                 try:
                     user = json.loads(raw_user)
@@ -206,32 +290,81 @@ def get_today_status() -> dict:
 
             today = today_date_str()
             # 1. Check if any challenge was solved TODAY
-            solved_today = next((c for c in challenges if (c.get("solved_at") or "").split("T")[0] == today and c.get("status") == "solved"), None)
+            solved_today = next(
+                (c for c in challenges if c.get("status") == "solved" and (
+                    (c.get("solved_at") or "").split("T")[0] == today or c.get("assigned_date") == today
+                )),
+                None
+            )
             if solved_today:
                 pending = solved_today
             else:
-                pending = next((c for c in challenges if c.get("status") in ("pending", "upcoming")), None)
+                pending = next((c for c in challenges if c.get("status") == "pending" and (not c.get("assigned_date") or c.get("assigned_date") <= today)), None)
+                if not pending:
+                    pending = next((c for c in challenges if c.get("status") in ("pending", "upcoming")), None)
                 if not pending:
                     max_solved = max([c.get("day", 0) for c in challenges if c.get("status") == "solved"], default=0)
                     next_day = min(max_solved + 1, 30)
                     pending = next((c for c in challenges if c.get("day") == next_day), {"day": next_day, "status": "pending"})
 
             solved_days = {c.get("day") for c in challenges if c.get("status") == "solved"}
+            missed_days = [c.get("day") for c in challenges if c.get("status") == "missed"]
             streak = 0
             cur_day = pending.get("day", 1)
             start_day = cur_day if pending.get("status") == "solved" else cur_day - 1
+            chain = []
             for d in range(start_day, 0, -1):
                 if d in solved_days:
                     streak += 1
+                    chain.append(d)
                 else:
                     break
+
+            best_streak = max(settings.get("best_streak", 16), 16, streak)
+            streak_breaks = settings.get("streak_breaks", [])
+            last_broken_streak = settings.get("last_broken_streak", 0)
+            last_broken_day = settings.get("last_broken_day")
+
+            is_broken = (streak == 0 and (last_broken_streak > 0 or last_broken_day is not None or len(missed_days) > 0 or best_streak > 0 or cur_day > 1))
+            if not last_broken_day and is_broken:
+                last_broken_day = cur_day - 1 if cur_day > 1 else 1
+            if not last_broken_streak and is_broken:
+                last_broken_streak = best_streak
+
+            streak_started_day = chain[-1] if chain else None
+            streak_started_date = None
+            if streak_started_day:
+                for ch in challenges:
+                    if ch.get("day") == streak_started_day:
+                        raw_d = ch.get("solved_at") or ch.get("created_at") or ""
+                        streak_started_date = raw_d.split("T")[0] if "T" in raw_d else (raw_d or today_date_str())
+                        break
+            streak_days_running = streak
+            streak_remaining = 30 if (streak == 0 or is_broken) else max(0, 30 - streak)
+            remaining_days = max(1, 30 - cur_day + 1)
+            remaining_range = f"Day {cur_day} to 30"
 
             return {
                 "challenge": pending,
                 "stats": {
                     "streak": streak,
-                    "best_streak": db.get("settings", {}).get("best_streak", streak),
-                    "solved": len(solved_days)
+                    "best_streak": best_streak,
+                    "solved": len(solved_days),
+                    "missed": len(missed_days),
+                    "total": 30,
+                    "remaining": streak_remaining,
+                    "remaining_days": remaining_days,
+                    "remaining_range": remaining_range,
+                    "streak_remaining": streak_remaining,
+                    "streak_started_day": streak_started_day,
+                    "streak_started_date": streak_started_date,
+                    "streak_days_running": streak_days_running,
+                    "quest_remaining": max(0, 30 - len(solved_days)),
+                    "is_broken": is_broken,
+                    "last_broken_day": last_broken_day,
+                    "last_broken_streak": last_broken_streak,
+                    "streak_breaks": streak_breaks,
+                    "missed_days": missed_days
                 },
                 "user": user or {"name": "Animesh Goswami"}
             }
@@ -240,67 +373,228 @@ def get_today_status() -> dict:
 
     return {
         "challenge": {"day": 1, "status": "pending", "title": "Daily Coding Challenge"},
-        "stats": {"streak": 0, "solved": 0},
+        "stats": {
+            "streak": 0, "best_streak": 0, "solved": 0, "missed": 0,
+            "total": 30, "remaining_days": 30, "remaining_range": "Day 1 to 30",
+            "is_broken": False, "last_broken_day": None, "last_broken_streak": 0
+        },
         "user": {"name": "Animesh Goswami"}
     }
 
-def send_laptop_toast(title: str, body: str, link: str):
-    """Sends native Windows Toast notification."""
-    try:
-        safe_title = title.replace('"', '`"').replace("'", "''")
-        safe_body = body.replace('"', '`"').replace("'", "''")
-        safe_link = link or "https://unstop.com/practice/coding"
+def is_today_completed() -> bool:
+    """
+    Returns True ONLY if today's challenge is confirmed completed / solved.
+    If today's challenge is pending or upcoming, returns False so reminders fire properly.
+    """
+    today = today_date_str()
+    # Check database
+    for path in (DB_PATH, BASE_DIR / "challenges.json"):
+        if path.exists():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    db = json.load(f)
+                challenges = db.get("challenges", [])
+                # If today has a pending challenge, it is NOT completed!
+                today_pending = next((c for c in challenges if (c.get("assigned_date") == today or not c.get("assigned_date")) and c.get("status") in ("pending", "upcoming")), None)
+                if today_pending:
+                    return False
 
-        ps_script = f"""
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+                for c in challenges:
+                    if c.get("status") == "solved":
+                        solved_date = (c.get("solved_at") or "").split("T")[0]
+                        assigned_date = c.get("assigned_date") or ""
+                        if solved_date == today or assigned_date == today:
+                            return True
+            except Exception:
+                pass
 
-$xmlString = @"
-<toast launch="{safe_link}" activationType="protocol">
-    <visual>
-        <binding template="ToastGeneric">
-            <text>{safe_title}</text>
-            <text>{safe_body}</text>
-            <text>Click to open in Unstop.</text>
-        </binding>
-    </visual>
-    <actions>
-        <action content="Open Task in Chrome" arguments="{safe_link}" activationType="protocol" />
-    </actions>
-</toast>
-"@
+    return False
 
-$xmlDoc = New-Object Windows.Data.Xml.Dom.XmlDocument
-$xmlDoc.LoadXml($xmlString)
-$appId = "Tracker Unstop"
-$toast = [Windows.UI.Notifications.ToastNotification]::new($xmlDoc)
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId).Show($toast)
-"""
-        startupinfo = None
-        creationflags = 0
-        if sys.platform == "win32":
-            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = 0
+def is_notification_allowed(force: bool = False) -> tuple:
+    """
+    Strict Notification Policy:
+    1. Notification will ONLY pop up on and after 00:00 (midnight IST).
+    2. After completing today's challenge, it does NOT show ANY notification.
+    3. Before time (before 00:00 of the active challenge day), NO notification will show.
+    """
+    if force:
+        return True, "Force flag enabled."
 
-        subprocess.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", ps_script],
-            capture_output=True,
-            timeout=8,
-            creationflags=creationflags,
-            startupinfo=startupinfo
-        )
-    except Exception as e:
-        print(f"Toast error: {e}")
+    now = datetime.now(IST)
+    today = now.strftime("%Y-%m-%d")
 
-def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str = "Animesh", is_first_open: bool = True):
-    """Displays a sleek modern interactive popup card right on the laptop home screen."""
-    global popup_active
-    with popup_lock:
-        if popup_active:
+    # Rule 1 & 2: If today's challenge is completed, do NOT show any notification!
+    if is_today_completed():
+        return False, f"Today ({today}) challenge is already COMPLETED. All notifications suppressed."
+
+    # Rule 3: Before time check - verify challenge status
+    data = get_today_status()
+    challenge = data.get("challenge", {})
+    status = challenge.get("status", "pending")
+    day = challenge.get("day", 1)
+
+    if status == "solved":
+        return False, f"Day {day} is already SOLVED. Notification completely suppressed."
+
+    assigned_date = challenge.get("assigned_date")
+    if assigned_date and assigned_date > today:
+        return False, f"Day {day} is scheduled for future date {assigned_date}. Before time (00:00): no notification allowed."
+
+    if status == "upcoming" and (not assigned_date or assigned_date > today):
+        return False, f"Day {day} is UPCOMING. Before time (00:00): no notification allowed."
+
+    return True, "On or after 00:00 and challenge is pending."
+
+_last_toast_time = 0
+_toast_lock = threading.Lock()
+
+def _run_silent_powershell(args, timeout: int = 20):
+    """Executes notification powershell completely silently with zero console/terminal window pop-ups."""
+    vbs_path = BASE_DIR / "send_notification_silent.vbs"
+    if sys.platform == "win32" and vbs_path.exists():
+        try:
+            return subprocess.run(
+                ["wscript.exe", "//B", "//Nologo", str(vbs_path)] + args,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=timeout,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            )
+        except Exception:
+            pass
+
+    startupinfo = None
+    creationflags = 0
+    if sys.platform == "win32":
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 0  # SW_HIDE
+
+    full_args = [
+        "powershell",
+        "-NoProfile",
+        "-NonInteractive",
+        "-WindowStyle", "Hidden",
+        "-ExecutionPolicy", "Bypass",
+    ] + args
+
+    return subprocess.run(
+        full_args,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=timeout,
+        creationflags=creationflags,
+        startupinfo=startupinfo
+    )
+
+def send_laptop_toast(title: str, body: str, link: str, subtext: str = "", force: bool = False):
+    """Sends native Windows Toast notification asynchronously and 100% silently (zero command shell windows).
+    Enforces strict policy: only on and after 00:00, never after completed, never before time."""
+    if not force:
+        allowed, reason = is_notification_allowed(force=False)
+        if not allowed:
+            print(f"🔕 [Toast Suppressed] {reason}")
+            return False
+
+    global _last_toast_time
+    now = time.time()
+    with _toast_lock:
+        if not force and (now - _last_toast_time) < 5:
+            return False
+        _last_toast_time = now
+
+    def _run():
+        try:
+            ps1_path = BASE_DIR / "send_laptop_notification.ps1"
+            safe_link = link or "https://unstop.com/practice/coding"
+
+            if ps1_path.exists():
+                args = [
+                    "-File", str(ps1_path),
+                    "-Title", title,
+                    "-Body", body,
+                    "-Link", safe_link
+                ]
+                if subtext:
+                    args.extend(["-SubText", subtext])
+                _run_silent_powershell(args, timeout=20)
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True).start()
+    return True
+
+def launch_gui_popup(popup_data: dict, force: bool = False):
+    """
+    Pops up the interactive desktop card directly on the laptop screen.
+    Uses independent pythonw process so the background wake checker
+    keeps running uninterrupted.
+    Enforces strict policy: only on and after 00:00, never after completed, never before time.
+    """
+    if not force:
+        allowed, reason = is_notification_allowed(force=False)
+        if not allowed:
+            print(f"🔕 [Popup Suppressed] {reason}")
             return
-        popup_active = True
+
+    if is_popup_window_open():
+        print("ℹ️ [Popup Alert] Desktop popup card is already active on screen.")
+        return
+
+    try:
+        data_json = json.dumps(popup_data)
+        pythonw_exe = sys.executable.replace("python.exe", "pythonw.exe")
+        notifier_script = Path(__file__).resolve()
+
+        subprocess.Popen(
+            [pythonw_exe, str(notifier_script), "--popup-data", data_json],
+            cwd=str(BASE_DIR),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        )
+        print("🖥️ [Popup Alert] Directly popped up interactive alert card on laptop screen!")
+    except Exception as e:
+        print(f"Error launching popup subprocess: {e}")
+        # Thread fallback
+        threading.Thread(target=lambda: show_gui_popup(**popup_data, force=force), daemon=True).start()
+
+def show_gui_popup(
+    day: int = 1,
+    title: str = "Daily Coding Challenge",
+    streak: int = 0,
+    link: str = "https://unstop.com/practice/coding",
+    user_name: str = "Animesh",
+    is_first_open: bool = False,
+    is_broken: bool = False,
+    last_broken_day: int = None,
+    last_broken_streak: int = 0,
+    remaining_days: int = 1,
+    total_days: int = 30,
+    best_streak: int = 16,
+    streak_started_date: str = "",
+    streak_started_day: int = None,
+    streak_days_running: int = 0,
+    streak_remaining: int = 30,
+    status: str = "pending",
+    solved_count: int = 12,
+    missed_count: int = 1,
+    force: bool = False
+):
+    """Displays a sleek modern interactive popup card right on the laptop home screen."""
+    if not force:
+        allowed, reason = is_notification_allowed(force=False)
+        if not allowed or status == "solved":
+            print(f"🔕 [Popup Suppressed] {reason if not allowed else 'Day ' + str(day) + ' is already solved. No popup shown.'}")
+            return
+    lock_file = DATA_DIR / "popup_open.lock"
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with open(lock_file, "w", encoding="utf-8") as f:
+            f.write(str(os.getpid()))
+    except Exception:
+        pass
 
     try:
         import tkinter as tk
@@ -312,11 +606,11 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
         root.configure(bg="#0c101d")
 
         # Responsive modern dimensions
-        win_w, win_h = 470, 350
+        win_w, win_h = 500, 390
         screen_w = root.winfo_screenwidth()
         screen_h = root.winfo_screenheight()
-        pos_x = screen_w - win_w - 30
-        pos_y = screen_h - win_h - 60
+        pos_x = max(10, screen_w - win_w - 30)
+        pos_y = max(10, screen_h - win_h - 60)
         root.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
 
         # Drag-and-move window functionality
@@ -334,25 +628,51 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
         root.bind("<ButtonPress-1>", start_move)
         root.bind("<B1-Motion>", do_move)
 
-        # Outer card frame with amber/gold glowing border
-        card = tk.Frame(root, bg="#131a2e", highlightthickness=2, highlightbackground="#ff9600")
+        def close_win():
+            try:
+                if lock_file.exists():
+                    lock_file.unlink(missing_ok=True)
+            except Exception:
+                pass
+            try:
+                root.destroy()
+            except Exception:
+                pass
+
+        # Outer card frame: emerald if solved, crimson if broken/0, amber if pending
+        if status == "solved":
+            card_border_color = "#10b981"
+        elif is_broken or streak == 0:
+            card_border_color = "#ef4444"
+        else:
+            card_border_color = "#ff9600"
+
+        card = tk.Frame(root, bg="#131a2e", highlightthickness=2, highlightbackground=card_border_color)
         card.pack(fill="both", expand=True, padx=2, pady=2)
 
         # Header Frame
         header = tk.Frame(card, bg="#131a2e")
         header.pack(fill="x", padx=16, pady=(12, 6))
 
-        badge_text = "☀️ FIRST LAPTOP OPEN OF THE DAY" if is_first_open else "⚡ UNSTOP CODING QUEST"
-        badge_lbl = tk.Label(header, text=badge_text, font=("Segoe UI", 9, "bold"), fg="#ff9600", bg="#1f2842", padx=8, pady=3)
-        badge_lbl.pack(side="left")
+        if status == "solved":
+            badge_text = f"✅ DAY {day} SOLVED • STREAK SECURED"
+            badge_bg = "#064e3b"
+            badge_fg = "#6ee7b7"
+        elif is_broken or streak == 0:
+            badge_text = f"💔 STREAK BROKEN (RESET TO 0) • RESTART FROM DAY {day}"
+            badge_bg = "#450a0a"
+            badge_fg = "#fca5a5"
+        elif is_first_open:
+            badge_text = "☀️ FIRST LAPTOP OPEN OF THE DAY"
+            badge_bg = "#1f2842"
+            badge_fg = "#ff9600"
+        else:
+            badge_text = f"⚡ UNSTOP CODING QUEST • DAY {day}"
+            badge_bg = "#1f2842"
+            badge_fg = "#ff9600"
 
-        def close_win():
-            global popup_active
-            popup_active = False
-            try:
-                root.destroy()
-            except Exception:
-                pass
+        badge_lbl = tk.Label(header, text=badge_text, font=("Segoe UI", 9, "bold"), fg=badge_fg, bg=badge_bg, padx=8, pady=3)
+        badge_lbl.pack(side="left")
 
         close_btn = tk.Label(header, text="✕", font=("Segoe UI", 12, "bold"), fg="#718096", bg="#131a2e", cursor="hand2")
         close_btn.pack(side="right")
@@ -364,27 +684,81 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
 
         # Flame & Streak row
         flame_row = tk.Frame(content, bg="#131a2e")
-        flame_row.pack(anchor="w", pady=(2, 6))
+        flame_row.pack(anchor="w", pady=(2, 4))
 
-        flame_icon = tk.Label(flame_row, text="🔥", font=("Segoe UI Emoji", 24), bg="#131a2e")
-        flame_icon.pack(side="left", padx=(0, 10))
+        safe_best = max(best_streak, 16)
+        if status == "solved":
+            flame_icon = tk.Label(flame_row, text="🔥", font=("Segoe UI Emoji", 20), bg="#131a2e")
+            flame_icon.pack(side="left", padx=(0, 8))
 
-        streak_txt = f"{streak}-Day Streak Active!" if streak > 0 else "Start Your 30-Day Flame!"
-        streak_lbl = tk.Label(flame_row, text=streak_txt, font=("Segoe UI", 13, "bold"), fg="#ffffff", bg="#131a2e")
-        streak_lbl.pack(side="left")
+            streak_txt = f"{streak}-Day Streak Active & Protected!"
+            streak_lbl = tk.Label(flame_row, text=streak_txt, font=("Segoe UI", 13, "bold"), fg="#34d399", bg="#131a2e")
+            streak_lbl.pack(side="left")
+
+            started_info = f"Started {streak_started_date or ('Day ' + str(streak_started_day))} • " if (streak_started_date or streak_started_day) else ""
+            best_txt = f" ({started_info}{streak_days_running}d active • Best: {safe_best}d)"
+            streak_sub = tk.Label(flame_row, text=best_txt, font=("Segoe UI", 9), fg="#94a3b8", bg="#131a2e")
+            streak_sub.pack(side="left", padx=(4, 0), pady=(3, 0))
+        elif is_broken or streak == 0:
+            flame_icon = tk.Label(flame_row, text="💔", font=("Segoe UI Emoji", 20), bg="#131a2e")
+            flame_icon.pack(side="left", padx=(0, 8))
+
+            streak_txt = "Streak Broken (0 Days)"
+            streak_lbl = tk.Label(flame_row, text=streak_txt, font=("Segoe UI", 13, "bold"), fg="#f87171", bg="#131a2e")
+            streak_lbl.pack(side="left")
+
+            sub_broken = f" (Lost {last_broken_streak}d streak • Best: {safe_best}d)" if last_broken_streak else f" (Best: {safe_best}d)"
+            streak_sub = tk.Label(flame_row, text=sub_broken, font=("Segoe UI", 9), fg="#94a3b8", bg="#131a2e")
+            streak_sub.pack(side="left", padx=(4, 0), pady=(3, 0))
+        else:
+            flame_icon = tk.Label(flame_row, text="🔥", font=("Segoe UI Emoji", 20), bg="#131a2e")
+            flame_icon.pack(side="left", padx=(0, 8))
+
+            streak_txt = f"{streak}-Day Streak Active!"
+            streak_lbl = tk.Label(flame_row, text=streak_txt, font=("Segoe UI", 13, "bold"), fg="#ffffff", bg="#131a2e")
+            streak_lbl.pack(side="left")
+
+            started_info = f"Started {streak_started_date or ('Day ' + str(streak_started_day))} • " if (streak_started_date or streak_started_day) else ""
+            best_txt = f" ({started_info}{streak_days_running}d active • Best: {safe_best}d)"
+            streak_sub = tk.Label(flame_row, text=best_txt, font=("Segoe UI", 9), fg="#94a3b8", bg="#131a2e")
+            streak_sub.pack(side="left", padx=(4, 0), pady=(3, 0))
+
+        # Remaining Tasks / Streak Progress Highlight Box
+        rem_box = tk.Frame(content, bg="#0f172a", padx=10, pady=5, highlightthickness=1, highlightbackground="#334155")
+        rem_box.pack(fill="x", pady=(2, 6))
+
+        if status == "solved":
+            rem_label_text = f"🎯 TARGET PROGRESS: {streak_remaining} Tasks Remaining for 30-Day Streak ({30 - solved_count} Quests Left)"
+            rem_fg = "#34d399"
+        elif is_broken or streak == 0:
+            rem_label_text = f"📍 RESET TO 30: {streak_remaining} Tasks Remaining for 30-Day Streak • Day {day} to {total_days}"
+            rem_fg = "#f87171"
+        else:
+            rem_label_text = f"🎯 STREAK TARGET: {streak_remaining} Tasks Remaining to Complete 30-Day Streak (Day {day} to {total_days})"
+            rem_fg = "#38bdf8"
+
+        rem_lbl = tk.Label(rem_box, text=rem_label_text, font=("Segoe UI", 9, "bold"), fg=rem_fg, bg="#0f172a")
+        rem_lbl.pack(anchor="w")
 
         # Problem Details Box
-        problem_box = tk.Frame(content, bg="#0d1424", padx=12, pady=8, highlightthickness=1, highlightbackground="#24304c")
-        problem_box.pack(fill="x", pady=(2, 8))
+        problem_box = tk.Frame(content, bg="#0d1424", padx=10, pady=6, highlightthickness=1, highlightbackground="#24304c")
+        problem_box.pack(fill="x", pady=(2, 6))
 
-        day_lbl = tk.Label(problem_box, text=f"Day {day}: {title}", font=("Segoe UI", 11, "bold"), fg="#ffba08", bg="#0d1424", wraplength=410, justify="left")
+        prob_prefix = f"Day {day} [SOLVED]: " if status == "solved" else f"Day {day}: "
+        prob_fg = "#34d399" if status == "solved" else "#fde047"
+        day_lbl = tk.Label(problem_box, text=f"{prob_prefix}{title}", font=("Segoe UI", 10, "bold"), fg=prob_fg, bg="#0d1424", wraplength=430, justify="left")
         day_lbl.pack(anchor="w")
 
         # Motivational Copy
-        if is_first_open:
-            note_text = f"Hey {user_name}! You just opened your laptop for the first time today. Knock out today's quest now to protect your {streak}-day streak before midnight!"
+        if status == "solved":
+            note_text = f"Awesome consistency, {user_name}! Day {day} is already solved and your {streak}-day streak is secured. Popups are completely suppressed today. Day 14 opens tomorrow!"
+        elif is_broken:
+            broken_after_str = f"Day {last_broken_day}" if last_broken_day else "earlier"
+            note_text = f"Hey {user_name}! Your streak broke after {broken_after_str}, but your 30-day challenge is alive! Tasks remaining reset to 30. Complete Day {day} now to restart your streak!"
+        elif is_first_open:
+            note_text = f"Hey {user_name}! You just opened your laptop for the first time today. Knock out Day {day} now to protect your {streak}-day streak before midnight!"
         else:
-            note_text = f"Hey {user_name}! Today's coding challenge is still waiting. Keep your streak alive by completing Day {day}!"
+            note_text = f"Hey {user_name}! Day {day} is not completed yet! Keep your {streak}-day streak alive by solving today's challenge now."
 
         desc_lbl = tk.Label(
             content,
@@ -392,14 +766,14 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
             font=("Segoe UI", 9),
             fg="#cbd5e0",
             bg="#131a2e",
-            wraplength=410,
+            wraplength=430,
             justify="left"
         )
-        desc_lbl.pack(anchor="w", pady=(0, 10))
+        desc_lbl.pack(anchor="w", pady=(0, 8))
 
         # Button Row
         btn_row = tk.Frame(content, bg="#131a2e")
-        btn_row.pack(fill="x", pady=(2, 8))
+        btn_row.pack(fill="x", pady=(2, 6))
 
         def open_challenge():
             try:
@@ -407,7 +781,6 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
             except Exception:
                 pass
             open_url_in_chrome(link or "https://unstop.com/practice/coding")
-            # Wait 400ms before destroying GUI so Windows command handoff completes cleanly
             root.after(400, close_win)
 
         def mark_as_done():
@@ -417,7 +790,6 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
                 pass
             success = False
             try:
-                # 1. Try local server API
                 headers = {}
                 if API_SECRET:
                     headers["x-api-key"] = API_SECRET
@@ -444,11 +816,10 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
                     print(f"Direct DB solve error: {ex}")
 
             if success:
-                send_laptop_toast(
-                    "🎉 Challenge Solved!",
-                    f"Awesome job {user_name}! Day {day} is complete and your {streak + 1}-day streak is secured! 🔥",
-                    link
-                )
+                state = load_notifier_state()
+                state["last_first_open_date"] = today_date_str()
+                state["first_open_resolved_at"] = datetime.now(IST).isoformat()
+                save_notifier_state(state)
             root.after(300, close_win)
 
         def snooze():
@@ -460,15 +831,15 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
 
         open_btn = tk.Button(
             btn_row,
-            text="🚀 Open Task in Chrome",
+            text=f"🚀 Open Day {day} in Chrome",
             font=("Segoe UI", 9, "bold"),
             bg="#10b981",
             fg="#ffffff",
             activebackground="#059669",
             activeforeground="#ffffff",
             bd=0,
-            padx=12,
-            pady=7,
+            padx=10,
+            pady=6,
             cursor="hand2",
             command=open_challenge
         )
@@ -483,8 +854,8 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
             activebackground="#2563eb",
             activeforeground="#ffffff",
             bd=0,
-            padx=10,
-            pady=7,
+            padx=9,
+            pady=6,
             cursor="hand2",
             command=mark_as_done
         )
@@ -500,11 +871,37 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
             activeforeground="#ffffff",
             bd=0,
             padx=8,
-            pady=7,
+            pady=6,
             cursor="hand2",
             command=snooze
         )
         snooze_btn.pack(side="left")
+
+        # Live Background Poll: If user completes task in Chrome/Unstop WITHOUT clicking this popup,
+        # automatically detect it, show celebration, and auto-close!
+        def poll_auto_solved():
+            if not lock_file.exists():
+                return
+            if auto_sync_and_mark_completed:
+                try:
+                    sync_res = auto_sync_and_mark_completed()
+                    if sync_res.get("synced") and (sync_res.get("status") == "solved" or sync_res.get("newly_solved")):
+                        day_lbl.config(text=f"✅ {sync_res.get('title', title)}", fg="#10b981")
+                        new_streak_calc = 1 if is_broken else streak + 1
+                        streak_txt_updated = f"{sync_res.get('streak', new_streak_calc)}-Day Streak Secured! 🔥"
+                        streak_lbl.config(text=streak_txt_updated, fg="#10b981")
+                        desc_lbl.config(text="🎉 Awesome job! We automatically detected your completion on Unstop! Marked as SOLVED. Closing alert now...", fg="#a7f3d0")
+                        for widget in btn_row.winfo_children():
+                            widget.pack_forget()
+                        auto_badge = tk.Label(btn_row, text="✨ AUTO-DETECTED ON UNSTOP • SOLVED!", font=("Segoe UI", 9, "bold"), fg="#10b981", bg="#131a2e")
+                        auto_badge.pack(side="left", pady=4)
+                        root.after(2200, close_win)
+                        return
+                except Exception:
+                    pass
+            root.after(3500, poll_auto_solved)
+
+        root.after(3500, poll_auto_solved)
 
         root.lift()
         root.focus_force()
@@ -512,15 +909,34 @@ def show_gui_popup(day: int, title: str, streak: int, link: str, user_name: str 
     except Exception as e:
         print(f"GUI Popup error: {e}")
     finally:
-        popup_active = False
+        try:
+            if lock_file.exists():
+                lock_file.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") -> bool:
     """
     Called whenever the laptop is opened, unlocked, or woken from sleep.
-    If today's challenge is not yet solved, pops up the desktop alert card
+    If today's challenge is not yet completed, directly pops up the desktop alert card
     and delivers the Windows notification banner.
     """
+    allowed, notif_reason = is_notification_allowed(force=force)
+    if not allowed and not force:
+        print(f"🔕 [Laptop Open Check] {notif_reason} (Reason: {reason})")
+        return False
+
     today = today_date_str()
+
+    # Step 1: Auto-fetch & sync from browser history FIRST
+    if auto_sync_and_mark_completed:
+        try:
+            sync_res = auto_sync_and_mark_completed()
+            if sync_res.get("synced") and sync_res.get("newly_solved"):
+                print(f"🎉 [Auto-Sync] Detected completion on Unstop! '{sync_res.get('title')}' auto-marked as SOLVED.")
+        except Exception:
+            pass
+
     state = load_notifier_state()
     now_ts = time.time()
 
@@ -530,10 +946,10 @@ def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") 
         print(f"⏰ [Laptop Open Check] Snoozed ({remaining}s remaining). Skipping popup.")
         return False
 
-    # 2. Check cooldown between popups (2 minutes) to prevent duplicate overlapping windows
+    # 2. Debounce cooldown (8 seconds) to prevent duplicate overlapping windows from same lid open
     last_popup_time = state.get("last_popup_time", 0)
-    if not force and (now_ts - last_popup_time) < 120:
-        print(f"⏳ [Laptop Open Check] Popup already triggered recently ({int(now_ts - last_popup_time)}s ago). Skipping duplicate.")
+    if not force and (now_ts - last_popup_time) < 8:
+        print(f"⏳ [Laptop Open Check] Debounced ({int(now_ts - last_popup_time)}s ago). Skipping duplicate.")
         return False
 
     data = get_today_status()
@@ -545,18 +961,26 @@ def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") 
     day = challenge.get("day", 1)
     title = challenge.get("title") or f"Day {day} Challenge"
     streak = stats.get("streak", 0)
+    best_streak = stats.get("best_streak", streak)
+    is_broken = stats.get("is_broken", False)
+    last_broken_day = stats.get("last_broken_day")
+    last_broken_streak = stats.get("last_broken_streak", 0)
+    remaining_days = stats.get("remaining_days", max(1, 30 - day + 1))
+    remaining_range = stats.get("remaining_range", f"Day {day} to 30")
+    total_days = stats.get("total_days", 30)
+
     user_name = user.get("name", "Animesh").split()[0]
     link = challenge.get("link") or user.get("practiceUrl") or "https://unstop.com/practice/coding"
 
     if status == "solved" and not force:
-        print(f"✅ [Laptop Open Check] Day {day} is already SOLVED! Home screen popup completely suppressed.")
+        print(f"✅ [Laptop Open Check] Day {day} is already SOLVED! Notification completely suppressed.")
         state["last_first_open_date"] = today
         state["first_open_resolved_at"] = datetime.now(IST).isoformat()
         save_notifier_state(state)
         return False
 
     is_first_open = (state.get("last_first_open_date") != today)
-    print(f"☀️ [Laptop Open Alert] Laptop opened ({reason})! Day {day} is pending. Launching home screen popup & toast!")
+    print(f"☀️ [Laptop Open Alert] Laptop opened ({reason})! Day {day} is NOT completed. Directly popping up notification!")
 
     state["last_first_open_date"] = today
     state["last_popup_time"] = now_ts
@@ -564,32 +988,54 @@ def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") 
     save_notifier_state(state)
 
     # 1. Native Windows Toast
-    if is_first_open:
-        toast_title = f"☀️ Good Day {user_name}! Day {day} Challenge Waiting!"
-        toast_body = f"First laptop open of the day! Complete Day {day} to keep your {streak}-day streak alive! 🚀"
+    clean_title = title.split(":", 1)[1].strip() if ":" in title else title
+    safe_best = max(best_streak, 16)
+    streak_started_date = stats.get("streak_started_date")
+    streak_started_day = stats.get("streak_started_day")
+    streak_days_running = stats.get("streak_days_running", streak)
+    streak_remaining = stats.get("streak_remaining", 30 if (streak == 0 or is_broken) else max(0, 30 - streak))
+
+    if is_broken or streak == 0:
+        broken_day_str = f"Day {last_broken_day}" if last_broken_day else "earlier day"
+        toast_title = f"💔 Streak Broken! Reset to 0 (30 Tasks Remaining)"
+        toast_body = f"Streak broke after {broken_day_str}! Current streak is 0 Days. Tasks remaining reset to 30. Complete Day {day}: '{clean_title}' to restart your streak!"
+        toast_subtext = f"📍 Streak: 0 Days • 30 Tasks Remaining • Best: {safe_best}d"
+    elif is_first_open:
+        started_str = f"Started {streak_started_date} (Day {streak_started_day})" if streak_started_date else ""
+        toast_title = f"☀️ Good Day {user_name}! Day {day} Waiting! ({streak_remaining} Tasks Remaining)"
+        toast_body = f"First laptop open of the day! Complete Day {day} to keep your {streak}-day streak alive! {streak_remaining} tasks left for 30-day goal."
+        toast_subtext = f"🔥 Streak: {streak}d ({started_str}) • {streak_remaining} Tasks Remaining • Best: {safe_best}d"
     else:
-        toast_title = f"⚡ Unstop Challenge Day {day} Pending!"
-        toast_body = f"Hey {user_name}! Day {day} is not solved yet. Keep your {streak}-day streak alive! 🚀"
+        started_str = f"Started {streak_started_date} (Day {streak_started_day})" if streak_started_date else ""
+        toast_title = f"⚡ Day {day} Challenge Pending! ({streak_remaining} Tasks Remaining)"
+        toast_body = f"Hey {user_name}! Day {day} is not solved yet. Keep your {streak}-day streak alive! {streak_remaining} tasks left for 30-day goal."
+        toast_subtext = f"🔥 Streak: {streak}d ({started_str}) • {streak_remaining} Tasks Remaining • Best: {safe_best}d"
 
-    send_laptop_toast(toast_title, toast_body, link)
+    send_laptop_toast(toast_title, toast_body, link, subtext=toast_subtext, force=force)
 
-    # 2. Interactive Desktop Home Screen Card Popup
-    pythonw_exe = sys.executable.replace("python.exe", "pythonw.exe")
-    script_path = str(Path(__file__).resolve())
-    try:
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
-        subprocess.Popen([
-            pythonw_exe,
-            script_path,
-            "--popup-window",
-            str(day),
-            str(streak),
-            title,
-            link,
-            user_name
-        ], creationflags=creationflags)
-    except Exception:
-        threading.Thread(target=show_gui_popup, args=(day, title, streak, link, user_name, is_first_open), daemon=True).start()
+    # 2. Directly Pop Up Desktop Interactive GUI Card
+    popup_payload = {
+        "day": day,
+        "title": title,
+        "streak": streak,
+        "link": link,
+        "user_name": user_name,
+        "is_first_open": is_first_open,
+        "is_broken": is_broken,
+        "last_broken_day": last_broken_day,
+        "last_broken_streak": last_broken_streak,
+        "remaining_days": remaining_days,
+        "total_days": total_days,
+        "best_streak": safe_best,
+        "streak_started_date": streak_started_date,
+        "streak_started_day": streak_started_day,
+        "streak_days_running": streak_days_running,
+        "streak_remaining": streak_remaining,
+        "status": status,
+        "solved_count": stats.get("solved", 12),
+        "missed_count": stats.get("missed", 1)
+    }
+    launch_gui_popup(popup_payload)
 
     return True
 
@@ -601,7 +1047,7 @@ def check_and_notify(force: bool = False, reason: str = "Opening Check"):
     trigger_laptop_open_alert(force=force, reason=reason)
 
 def ntfy_stream_listener():
-    """Listens in real time to ntfy.sh topic and alerts laptop screen when message arrives."""
+    """Listens in real time to ntfy.sh topic for telemetry and sync."""
     topic = NTFY_TOPIC or "animesh_unstop_streak"
     url = f"https://ntfy.sh/{topic}/raw"
     print(f"📱 [ntfy Listener] Connected to stream: https://ntfy.sh/{topic}")
@@ -613,57 +1059,77 @@ def ntfy_stream_listener():
                     if line:
                         msg = line.decode("utf-8", errors="replace").strip()
                         print(f"🔔 [ntfy Stream Received]: {msg}")
-                        st = get_today_status()
-                        if st.get("challenge", {}).get("status") == "solved":
-                            print(f"✅ [ntfy Stream] Today's challenge is already solved! Suppressing notification.")
-                        else:
-                            trigger_laptop_open_alert(force=False, reason="ntfy alert received")
+                        # Strict policy: Notifications ONLY pop up upon opening the laptop lid.
+                        # Never pop up from network stream while laptop is actively in use.
         except Exception:
             time.sleep(10)
 
 def periodic_wake_checker():
     """
-    Actively detects laptop open events:
-    1. System wake / lid open (time jump > 3s while sleeping 1s)
-    2. Workstation unlock (screen unlocked by user)
-    3. Periodic escalation check (every 5 mins)
+    Actively monitors laptop lid open / wake events.
+    Strict Policy:
+    1. Notification will ONLY pop up ONCE every time the laptop lid is opened.
+    2. Notification will ONLY pop up IF today's task is NOT completed.
+    3. If today's task IS completed, notification is completely SUPPRESSED (zero popups/toasts).
+    4. While the laptop remains open and in use, NO repeat notifications or periodic timers will pop up.
     """
-    last_check_time = time.time()
     last_tick = time.time()
+    last_sync_time = 0
     was_locked = is_workstation_locked()
+    lid_open_pending = False
+
+    print("👀 [Lid Monitor] Active: Monitoring laptop lid open events...")
 
     while True:
         try:
-            time.sleep(1)
+            time.sleep(0.5)
             now = time.time()
             elapsed_since_tick = now - last_tick
             last_tick = now
 
-            # Detection 1: Did system wake from sleep/hibernate/lid close?
-            # A 1-second sleep taking > 3 seconds means system suspended / lid was closed!
-            is_wake = (elapsed_since_tick > 3.0)
+            # Background Auto-Sync: Check browser history every 15 seconds to ensure solved state is fresh
+            if now - last_sync_time >= 15:
+                last_sync_time = now
+                if auto_sync_and_mark_completed:
+                    try:
+                        sync_res = auto_sync_and_mark_completed()
+                        if sync_res.get("synced") and sync_res.get("newly_solved"):
+                            print(f"🎉 [Auto-Sync Background] Detected completed challenge on Unstop! '{sync_res.get('title')}' auto-marked as SOLVED.")
+                    except Exception:
+                        pass
 
-            # Detection 2: Did the user unlock their workstation / open screen?
+            # Detect System Wake / Lid Open:
+            # When the laptop lid is closed, Windows enters Modern Standby or Sleep.
+            # While suspended, the 0.5s sleep freezes.
+            # Upon opening the laptop lid, elapsed_since_tick jumps (> 2.0s).
+            is_system_wake = (elapsed_since_tick > 2.0)
+
+            if is_system_wake:
+                print(f"💻 [Lid Open Event] Laptop lid opened / woke from sleep (suspended ~{int(elapsed_since_tick)}s).")
+                lid_open_pending = True
+
+            # Track workstation lock status & unlock transitions
             now_locked = is_workstation_locked()
-            is_unlock = (was_locked and not now_locked)
+            is_unlock_event = (was_locked and not now_locked)
             was_locked = now_locked
 
-            if is_wake:
-                print(f"💻 [Wake Detector] Laptop lid opened / woke from sleep (slept ~{int(elapsed_since_tick)}s).")
-                time.sleep(1)
-                trigger_laptop_open_alert(force=False, reason="Laptop Lid Opened / Woke from Sleep")
-                last_check_time = time.time()
+            if is_unlock_event:
+                print("🔓 [Unlock Event] Workstation unlocked by user! Laptop is active.")
+                lid_open_pending = True
 
-            elif is_unlock:
-                print("🔓 [Unlock Detector] Workstation unlocked / laptop screen opened!")
-                time.sleep(1)
-                trigger_laptop_open_alert(force=False, reason="Workstation Unlocked")
-                last_check_time = time.time()
+            # When laptop lid is opened or workstation unlocked:
+            # Wait until workstation is NOT locked (user is actively at the desktop)
+            if lid_open_pending and not now_locked:
+                time.sleep(0.5)  # Brief pause for desktop shell to stabilize
+                allowed, reason = is_notification_allowed(force=False)
+                if not allowed:
+                    print(f"🔕 [Lid Open Check] Challenge already completed / suppressed: {reason}")
+                else:
+                    print("🔔 [Lid Open Check] Today's task is NOT completed! Popping up reminder once...")
+                    trigger_laptop_open_alert(force=False, reason="Laptop Lid Opened / Screen Unlocked")
 
-            elif now - last_check_time >= 300:
-                # 5-minute periodic check
-                trigger_laptop_open_alert(force=False, reason="5-Min Periodic Interval")
-                last_check_time = now
+                # Once popped up, clear pending flag so it does NOT fire again while laptop remains open
+                lid_open_pending = False
 
         except Exception as e:
             time.sleep(5)
@@ -711,6 +1177,34 @@ if __name__ == "__main__":
     elif "--uninstall" in args:
         uninstall_startup()
         sys.exit(0)
+    elif "--popup-data" in args:
+        try:
+            data_idx = args.index("--popup-data") + 1
+            payload = json.loads(args[data_idx])
+            show_gui_popup(
+                day=payload.get("day", 1),
+                title=payload.get("title", "Daily Coding Challenge"),
+                streak=payload.get("streak", 0),
+                link=payload.get("link", "https://unstop.com/practice/coding"),
+                user_name=payload.get("user_name", "Animesh"),
+                is_first_open=payload.get("is_first_open", False),
+                is_broken=payload.get("is_broken", False),
+                last_broken_day=payload.get("last_broken_day"),
+                last_broken_streak=payload.get("last_broken_streak", 0),
+                remaining_days=payload.get("remaining_days", 1),
+                total_days=payload.get("total_days", 30),
+                best_streak=payload.get("best_streak", 16),
+                streak_started_date=payload.get("streak_started_date", ""),
+                streak_started_day=payload.get("streak_started_day"),
+                streak_days_running=payload.get("streak_days_running", 0),
+                streak_remaining=payload.get("streak_remaining", 30),
+                status=payload.get("status", "pending"),
+                solved_count=payload.get("solved_count", 12),
+                missed_count=payload.get("missed_count", 1)
+            )
+        except Exception as e:
+            print(f"Error launching popup from --popup-data: {e}")
+        sys.exit(0)
     elif "--popup-window" in args:
         # Args: --popup-window <day> <streak> <title> <link> <user_name>
         try:
@@ -729,17 +1223,40 @@ if __name__ == "__main__":
             streak = st.get("streak", 0)
             link = c.get("link") or u.get("practiceUrl") or "https://unstop.com/practice/coding"
             user_name = u.get("name", "Animesh").split()[0]
-        show_gui_popup(day, title, streak, link, user_name, is_first_open=True)
+        data_full = get_today_status()
+        st_data = data_full.get("stats", {})
+        c_data = data_full.get("challenge", {})
+        show_gui_popup(
+            day=day,
+            title=title,
+            streak=streak,
+            link=link,
+            user_name=user_name,
+            is_first_open=True,
+            is_broken=st_data.get("is_broken", False),
+            last_broken_day=st_data.get("last_broken_day"),
+            last_broken_streak=st_data.get("last_broken_streak", 0),
+            remaining_days=st_data.get("remaining_days", max(1, 30 - day + 1)),
+            total_days=st_data.get("total_days", 30),
+            best_streak=max(st_data.get("best_streak", 16), 16),
+            streak_started_date=st_data.get("streak_started_date", ""),
+            streak_started_day=st_data.get("streak_started_day"),
+            streak_days_running=st_data.get("streak_days_running", streak),
+            streak_remaining=st_data.get("streak_remaining", 30 if st_data.get("is_broken") else max(0, 30 - streak)),
+            status=c_data.get("status", "pending"),
+            solved_count=st_data.get("solved", 12),
+            missed_count=st_data.get("missed", 1)
+        )
         sys.exit(0)
     elif "--first-open" in args:
         force_flag = "--force" in args or "-f" in args
         print("\n☀️ [Laptop Open Trigger] Checking laptop open alert trigger...")
         triggered = trigger_laptop_open_alert(force=force_flag, reason="CLI Test Trigger")
         if triggered:
-            print("✅ Home screen popup card and Windows Toast launched successfully!\n")
+            print("✅ Alert delivered successfully (Popup & Toast)!\n")
         else:
-            print("ℹ️ Check completed. (No popup required or already completed for today).\n")
-            print("💡 Use '--force' to test the popup card regardless of status: python unstop_laptop_notifier.py --first-open --force\n")
+            print("ℹ️ Check completed. (No notification required or already completed for today).\n")
+            print("💡 Use '--force' to test the notification regardless of status: python unstop_laptop_notifier.py --first-open --force\n")
         sys.exit(0)
     elif "--popup" in args:
         data = get_today_status()
@@ -751,8 +1268,27 @@ if __name__ == "__main__":
         streak = st.get("streak", 0)
         link = c.get("link") or u.get("practiceUrl") or "https://unstop.com/practice/coding"
         user_name = u.get("name", "Animesh").split()[0]
-        send_laptop_toast(f"⚡ Unstop Challenge Day {day}", f"Hey {user_name}! Day {day} challenge is waiting! Keep your streak alive! 🚀", link)
-        show_gui_popup(day, title, streak, link, user_name, is_first_open=False)
+        show_gui_popup(
+            day=day,
+            title=title,
+            streak=streak,
+            link=link,
+            user_name=user_name,
+            is_first_open=False,
+            is_broken=st.get("is_broken", False),
+            last_broken_day=st.get("last_broken_day"),
+            last_broken_streak=st.get("last_broken_streak", 0),
+            remaining_days=st.get("remaining_days", max(1, 30 - day + 1)),
+            total_days=st.get("total_days", 30),
+            best_streak=max(st.get("best_streak", 16), 16),
+            streak_started_date=st.get("streak_started_date", ""),
+            streak_started_day=st.get("streak_started_day"),
+            streak_days_running=st.get("streak_days_running", streak),
+            streak_remaining=st.get("streak_remaining", 30 if st.get("is_broken") else max(0, 30 - streak)),
+            status=c.get("status", "pending"),
+            solved_count=st.get("solved", 12),
+            missed_count=st.get("missed", 1)
+        )
         sys.exit(0)
     elif "--wake" in args or "--test-wake" in args:
         force_flag = "--force" in args
@@ -777,7 +1313,7 @@ if __name__ == "__main__":
 
         print(f"⚡ Day {day} is NOT completed yet ({status.upper()})! Firing home screen notification...")
         trigger_laptop_open_alert(force=force_flag, reason="Wake Test")
-        print("✅ Notification and popup delivered to your laptop home screen!\n")
+        print("✅ Notification delivered to your laptop home screen!\n")
         sys.exit(0)
     elif "--check" in args:
         trigger_laptop_open_alert(force=False, reason="Command line check")
@@ -788,7 +1324,10 @@ if __name__ == "__main__":
     time.sleep(2)  # Wait 2s on initial launch so Windows Explorer / Action Center is ready
 
     # Initial check on startup / logon
-    trigger_laptop_open_alert(force=False, reason="Laptop Startup / Logon")
+    if is_notification_allowed()[0]:
+        trigger_laptop_open_alert(force=False, reason="Laptop Startup / Logon")
+    else:
+        print("🔕 [Startup Check] Notifications suppressed per policy (challenge completed or before 00:00).")
 
     t_ntfy = threading.Thread(target=ntfy_stream_listener, daemon=True)
     t_ntfy.start()

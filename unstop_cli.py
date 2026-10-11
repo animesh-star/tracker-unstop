@@ -4,7 +4,9 @@ Easily check progress, mark challenges as solved, or test phone alerts from the 
 
 Usage:
   python unstop_cli.py status      - View today's status & streak
+  python unstop_cli.py sync        - Fetch Unstop challenge from browser & auto-mark solved
   python unstop_cli.py solve       - Mark today's challenge as solved
+  python unstop_cli.py complete    - Test celebratory completion notification (screen + phone)
   python unstop_cli.py open        - Open today's challenge directly in Google Chrome
   python unstop_cli.py first-open  - Test first laptop open of the day popup
   python unstop_cli.py alert       - Send instant test alert to phone
@@ -17,8 +19,11 @@ import os
 import sys
 import json
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 import requests
 import subprocess
+
+IST = timezone(timedelta(hours=5, minutes=30))
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -55,27 +60,59 @@ def get_headers():
 
 def print_status():
     try:
+        from unstop_sync import auto_sync_and_mark_completed
+        auto_sync_and_mark_completed()
+    except Exception:
+        pass
+
+    try:
         res = requests.get(f"{BASE_URL}/today", headers=get_headers(), timeout=4)
         if res.status_code == 200:
             data = res.json()
             c = data["challenge"]
             s = data["stats"]
             u = data["user"]
-            print("\n" + "=" * 52)
+            streak = s.get("streak", 0)
+            best_streak = max(s.get("best_streak", 16), 16)
+            is_broken = s.get("is_broken", False) or (streak == 0 and (s.get("last_broken_streak", 0) > 0 or s.get("last_broken_day") or s.get("missed", 0) > 0))
+            streak_started_date = s.get("streak_started_date")
+            streak_started_day = s.get("streak_started_day")
+            streak_days_running = s.get("streak_days_running", streak)
+            
+            # Tasks remaining for 30-day streak:
+            # If streak broke or is 0, resets to 30!
+            # If streak is running, remaining = 30 - streak
+            streak_tasks_remaining = s.get("remaining", 30 if (streak == 0 or is_broken) else max(0, 30 - streak))
+            quests_remaining = max(0, 30 - s.get("solved", 0))
+
+            print("\n" + "=" * 54)
             print(f"👤 Coder: {u['name']} (@{u['username']})")
             print(f"📧 User ID: {u['email']}")
             print(f"📅 Today: Day {c['day']} of 30")
             print(f"⚡ Status: {c['status'].upper()}")
-            print(f"🔥 Current Streak: {s['streak']} Days")
-            print(f"🏆 Best Streak: {s.get('best_streak', s['streak'])} Days")
+
+            if streak == 0 or is_broken:
+                broken_day = s.get("last_broken_day") or (c['day'] - 1 if c['day'] > 1 else 1)
+                lost_str = f" (Lost {s.get('last_broken_streak', 0)}d streak)" if s.get('last_broken_streak') else ""
+                print(f"🔥 Current Streak: 0 Days (RESET TO 0: Streak Broken after Day {broken_day}{lost_str})")
+            else:
+                started_str = f" (Started: {streak_started_date} on Day {streak_started_day} • {streak_days_running} Day{'s' if streak_days_running != 1 else ''} running)" if streak_started_date else f" ({streak_days_running} Days running)"
+                print(f"🔥 Current Streak: {streak} Days{started_str}")
+
+            print(f"🏆 Best Streak: {best_streak} Days (Preserved All-Time Record)")
             print(f"✅ Solved Quests: {s['solved']} / 30")
             print(f"💔 Missed Days: {s.get('missed', 0)}")
-            print(f"🎯 Tasks Remaining: {s['remaining']}")
+
+            if streak == 0 or is_broken:
+                print(f"🎯 Tasks Remaining: {streak_tasks_remaining} (RESET TO 30: Streak Broken - Restart from Day {c['day']})")
+            else:
+                print(f"🎯 Tasks Remaining: {streak_tasks_remaining} for 30-Day Streak ({quests_remaining} Quests Left)")
+
             if s.get("streak_at_risk"):
-                print("=" * 52)
+                print("=" * 54)
                 print("🚨 WARNING: YOUR STREAK IS AT RISK BEFORE MIDNIGHT!")
                 print("⚡ Complete today's task now to prevent auto-resetting to 0!")
-            print("=" * 52 + "\n")
+            print("=" * 54 + "\n")
             return
         else:
             print(f"❌ Server returned error {res.status_code}: {res.text}")
@@ -94,19 +131,54 @@ def print_status():
         try:
             with open(db_file, "r", encoding="utf-8") as f:
                 db = json.load(f)
-                challenges = db.get("challenges", [])
-                solved_count = sum(1 for c in challenges if c.get("status") == "solved")
-                missed_count = sum(1 for c in challenges if c.get("status") == "missed")
-                pending = [c for c in challenges if c.get("status") in ("pending", "upcoming")]
-                today_c = pending[0] if pending else (challenges[-1] if challenges else {"day": 1, "status": "solved"})
-                print("\n" + "=" * 52)
-                print(f"👤 Coder: Animesh Goswami (@animegos31002)")
-                print(f"📅 Today: Day {today_c.get('day', 1)} of 30")
-                print(f"⚡ Status: {today_c.get('status', 'pending').upper()}")
-                print(f"✅ Tasks Done: {solved_count} / 30")
-                print(f"💔 Missed Days: {missed_count}")
-                print(f"🎯 Tasks Remaining: {30 - solved_count}")
-                print("=" * 52 + "\n")
+            challenges = db.get("challenges", [])
+            settings = db.get("settings", {})
+            solved_count = sum(1 for c in challenges if c.get("status") == "solved")
+            missed_count = sum(1 for c in challenges if c.get("status") == "missed")
+            solved_days = {c.get("day") for c in challenges if c.get("status") == "solved"}
+            pending = [c for c in challenges if c.get("status") in ("pending", "upcoming")]
+            today_c = pending[0] if pending else (challenges[-1] if challenges else {"day": 1, "status": "solved"})
+            cur_day = today_c.get("day", 1)
+            start_day = cur_day if today_c.get("status") == "solved" else cur_day - 1
+            streak = 0
+            chain = []
+            for d in range(start_day, 0, -1):
+                if d in solved_days:
+                    streak += 1
+                    chain.append(d)
+                else:
+                    break
+            best_streak = max(settings.get("best_streak", 16), 16, streak)
+            is_broken = (streak == 0 and (settings.get("last_broken_streak", 0) > 0 or missed_count > 0 or cur_day > 1))
+            streak_remaining = 30 if (streak == 0 or is_broken) else max(0, 30 - streak)
+            oldest_day = chain[-1] if chain else None
+            streak_started_date = None
+            if oldest_day:
+                for ch in challenges:
+                    if ch.get("day") == oldest_day:
+                        raw_d = ch.get("solved_at") or ch.get("created_at") or ""
+                        streak_started_date = raw_d.split("T")[0] if "T" in raw_d else raw_d
+                        break
+            streak_days_running = streak
+
+            print("\n" + "=" * 54)
+            print(f"👤 Coder: Animesh Goswami (@animegos31002)")
+            print(f"📅 Today: Day {cur_day} of 30")
+            print(f"⚡ Status: {today_c.get('status', 'pending').upper()}")
+            if streak == 0 or is_broken:
+                broken_day = settings.get("last_broken_day") or (cur_day - 1 if cur_day > 1 else 1)
+                print(f"🔥 Current Streak: 0 Days (RESET TO 0: Streak Broken after Day {broken_day})")
+            else:
+                started_str = f" (Started: {streak_started_date} on Day {oldest_day} • {streak_days_running} Days running)" if streak_started_date else ""
+                print(f"🔥 Current Streak: {streak} Days{started_str}")
+            print(f"🏆 Best Streak: {best_streak} Days (Preserved All-Time Record)")
+            print(f"✅ Solved Quests: {solved_count} / 30")
+            print(f"💔 Missed Days: {missed_count}")
+            if streak == 0 or is_broken:
+                print(f"🎯 Tasks Remaining: {streak_remaining} (RESET TO 30: Streak Broken)")
+            else:
+                print(f"🎯 Tasks Remaining: {streak_remaining} for 30-Day Streak ({30 - solved_count} Quests Left)")
+            print("=" * 54 + "\n")
         except Exception as ex:
             print(f"❌ Failed to load local database: {ex}")
 
@@ -148,6 +220,8 @@ def mark_solved():
             if updated:
                 with open(db_file, "w", encoding="utf-8") as f:
                     json.dump(db, f, indent=2)
+                # After completing, do not show any notification per policy
+                pass
             else:
                 print("\nℹ️ All current challenges are already marked as solved.\n")
         except Exception as ex:
@@ -245,6 +319,36 @@ def send_alert(force: bool = False):
             print(f"❌ ntfy returned status: {res.status_code}\n")
     except Exception as e:
         print(f"❌ Failed to send direct push: {e}\n")
+
+def send_completion_alert():
+    """Manually test or trigger celebratory completion notifications for laptop screen and phone."""
+    print("\n🎉 Triggering completion notification for screen and mobile...")
+    try:
+        res = requests.post(f"{BASE_URL}/test-complete", headers=get_headers(), timeout=4)
+        if res.status_code == 200:
+            print("✅ Server delivered completion notification to phone & web push!")
+    except Exception:
+        pass
+
+    try:
+        from unstop_sync import send_completion_notification
+        is_done, day = is_today_completed()
+        title = f"Day {day} Coding Challenge"
+        streak = 1
+        db_f = DATA_DIR / "challenges.json"
+        if not db_f.exists():
+            db_f = BASE_DIR / "challenges.json"
+        if db_f.exists():
+            try:
+                with open(db_f, "r", encoding="utf-8") as f:
+                    _d = json.load(f)
+                streak = sum(1 for c in _d.get("challenges", []) if c.get("status") == "solved")
+            except Exception:
+                pass
+        send_completion_notification(day, title, streak, "https://unstop.com/practice/coding")
+        print(f"🎉 Completion notification delivered to laptop screen & https://ntfy.sh/{NTFY_TOPIC}!\n")
+    except Exception as ex:
+        print(f"❌ Failed to trigger completion alert: {ex}\n")
 
 def print_roadmap():
     try:
@@ -351,47 +455,12 @@ def send_laptop_notification(force: bool = False):
                 pass
 
     try:
-        ps_script = f"""
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
-
-$xmlString = @"
-<toast launch="{link}" activationType="protocol">
-    <visual>
-        <binding template="ToastGeneric">
-            <text>⚡ Unstop 30-Day Challenge Alert!</text>
-            <text>Hey {first_name}! Day {day} Challenge is waiting! Keep your 30-day streak alive! 🚀</text>
-            <text>Click to open your daily challenge in Unstop.</text>
-        </binding>
-    </visual>
-    <actions>
-        <action content="Open Challenge" arguments="{link}" activationType="protocol" />
-    </actions>
-</toast>
-"@
-
-$xmlDoc = New-Object Windows.Data.Xml.Dom.XmlDocument
-$xmlDoc.LoadXml($xmlString)
-$appId = "Tracker Unstop"
-$toast = [Windows.UI.Notifications.ToastNotification]::new($xmlDoc)
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId).Show($toast)
-"""
-        startupinfo = None
-        creationflags = 0
-        if sys.platform == "win32":
-            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = 0
-
-        subprocess.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", ps_script],
-            capture_output=True,
-            timeout=8,
-            creationflags=creationflags,
-            startupinfo=startupinfo
-        )
-        print(f"\n💻 Native laptop toast notification fired quietly to your screen for Day {day}!\n")
+        from unstop_laptop_notifier import send_laptop_toast
+        title = f"⚡ Day {day} Unstop Challenge Alert!"
+        body = f"Hey {first_name}! Day {day} Challenge is waiting! Keep your 30-day streak alive! 🚀"
+        subtext = "Click to open in Unstop."
+        send_laptop_toast(title, body, link, subtext=subtext, force=True)
+        print(f"\n💻 Native laptop toast notification fired completely silently to your screen for Day {day}!\n")
     except Exception as e:
         print(f"❌ Failed to trigger laptop notification: {e}")
 
@@ -442,12 +511,294 @@ def update_potd(day, title, link, status="solved"):
         except Exception as ex:
             print(f"❌ Local database update failed: {ex}")
 
+def sync_unstop():
+    print("\n🔍 Scanning Google Chrome & Edge history for Unstop coding practice...")
+    try:
+        from unstop_sync import auto_sync_and_mark_completed, fetch_unstop_activity_for_date
+        act = fetch_unstop_activity_for_date()
+        if act:
+            print(f"✅ Found Unstop challenge activity in {act.get('browser', 'Chrome')}:")
+            print(f"   📌 Problem:  {act.get('title')}")
+            print(f"   🔗 URL:      {act.get('url')}")
+            print(f"   ⏰ Time:     {act.get('time_iso')}")
+            print(f"   ⏱️ Duration: {act.get('duration_sec', 0):.1f}s")
+        else:
+            print("ℹ️ No Unstop practice activity detected in browser history for today yet.")
+
+        res = auto_sync_and_mark_completed()
+        if res.get("synced"):
+            print(f"\n🎉 Successfully Synced Directly From Unstop!")
+            print(f"   📅 Day:    Day {res.get('day')}")
+            print(f"   ⚡ Status: SOLVED (Auto-Detected)")
+            print(f"   🔥 Streak: {res.get('streak')} Days")
+            print(f"   🔕 Result: Popups and repeat notifications are completely suppressed for today!")
+        else:
+            print(f"ℹ️ Status: {res.get('reason', 'Database is up to date.')}")
+
+        # Display Live Stats
+        print("\n" + "=" * 56)
+        print("🔥 LIVE UNSTOP STREAK & STATS (REAL-TIME)")
+        print("=" * 56)
+        print_status()
+
+    except Exception as e:
+        print(f"❌ Sync error: {e}\n")
+
+def print_streak_details():
+    try:
+        res = requests.get(f"{BASE_URL}/streak-details", headers=get_headers(), timeout=4)
+        if res.status_code == 200:
+            data = res.json()
+            s = data["stats"]
+            c = data["challenge"]
+            breaks = data.get("streak_breaks", [])
+            print("\n" + "=" * 56)
+            print("🔥 UNSTOP 30-DAY STREAK & HEALTH DIAGNOSTICS")
+            print("=" * 56)
+
+            streak = s.get("streak", 0)
+            best_streak = max(s.get("best_streak", 16), 16)
+            status = s.get("streak_status", "active").upper()
+            is_broken = s.get("is_broken", False) or (streak == 0 and (s.get("last_broken_streak", 0) > 0 or s.get("last_broken_day") or s.get("missed", 0) > 0))
+            streak_started_date = s.get("streak_started_date")
+            streak_started_day = s.get("streak_started_day")
+            streak_days_running = s.get("streak_days_running", streak)
+            streak_remaining = s.get("remaining", 30 if (streak == 0 or is_broken) else max(0, 30 - streak))
+
+            if is_broken or status == "BROKEN" or streak == 0:
+                print(f"💔 Streak Status:      BROKEN / RESET TO 0")
+                print(f"🔥 Active Streak:      0 Days (Reset to 0)")
+                print(f"🏆 Best Streak Record:  {best_streak} Days (Safely Preserved!)")
+                print(f"⚡ Last Broken Streak:  {s.get('last_broken_streak', 0)} Days")
+                print(f"📅 Broken At:          {s.get('last_broken_at') or 'Recent deadline'}")
+                print(f"🎯 Tasks Remaining:    30 Tasks (RESET TO 30 for Streak Restart)")
+                print(f"🎯 Recovery Mission:   Complete Day {c.get('day')} today to restart your streak!")
+            elif status == "AT_RISK":
+                print(f"🚨 Streak Status:      AT RISK BEFORE MIDNIGHT!")
+                print(f"🔥 Active Streak:      {streak} Days")
+                if streak_started_date:
+                    print(f"📅 Streak Started:     {streak_started_date} (Day {streak_started_day}) • {streak_days_running} Days Running")
+                print(f"🏆 Best Streak Record:  {best_streak} Days (Safely Preserved!)")
+                print(f"🎯 Tasks Remaining:    {streak_remaining} Tasks Remaining for 30-Day Goal")
+                print(f"⚡ Action Required:    Solve Day {c.get('day')} before midnight to save streak!")
+            else:
+                print(f"🔥 Streak Status:      ACTIVE & STRONG")
+                print(f"🔥 Active Streak:      {streak} Days")
+                if streak_started_date:
+                    print(f"📅 Streak Started:     {streak_started_date} (Day {streak_started_day}) • {streak_days_running} Days Running")
+                print(f"🏆 Best Streak Record:  {best_streak} Days (Safely Preserved!)")
+                print(f"🎯 Tasks Remaining:    {streak_remaining} Tasks Remaining to Complete 30-Day Goal")
+
+            print("-" * 56)
+            print(f"✅ Total Solved:       {s.get('solved', 0)} / 30")
+            print(f"💔 Total Missed Days:  {s.get('missed', 0)}")
+            if s.get("missed_days"):
+                print(f"📋 Missed Days List:   {s.get('missed_days')}")
+            print(f"📅 Last Solved Date:   {s.get('last_solved_date') or 'None'}")
+            print(f"🔄 Total Break Events:  {s.get('total_streak_breaks', len(breaks))}")
+
+            if breaks:
+                print("\n📜 Past Streak Break History:")
+                for b in breaks[-3:]:
+                    print(f"   • Day {b.get('day')}: Lost {b.get('streak_lost', 0)}-Day Streak on {b.get('broken_at', '')[:10]}")
+
+            print("=" * 56 + "\n")
+            return
+    except Exception as e:
+        print(f"⚠️ Could not fetch streak details from server: {e}")
+
+def test_streak_break(day=None):
+    try:
+        url = f"{BASE_URL}/streak/test-break"
+        if day:
+            url += f"?day={day}"
+        res = requests.post(url, headers=get_headers(), timeout=5)
+        data = res.json()
+        print(f"\n💔 {data.get('message')}")
+        print(f"🔥 Active Streak is now: {data.get('stats', {}).get('streak', 0)} Days")
+        print(f"🏆 Best Streak is preserved at: {data.get('stats', {}).get('best_streak', 0)} Days\n")
+    except Exception as e:
+        print(f"❌ Failed to test streak break: {e}")
+
+def restore_streak(day=None):
+    try:
+        url = f"{BASE_URL}/streak/restore"
+        if day:
+            url += f"?day={day}"
+        res = requests.post(url, headers=get_headers(), timeout=5)
+        data = res.json()
+        print(f"\n✅ {data.get('message')}")
+        print(f"🔥 Active Streak is now: {data.get('stats', {}).get('streak', 0)} Days\n")
+    except Exception as e:
+        print(f"❌ Failed to restore streak: {e}")
+
+def print_roadmap():
+    try:
+        res = requests.get(f"{BASE_URL}/roadmap", headers=get_headers(), timeout=4)
+        if res.status_code == 200:
+            data = res.json()
+            roadmap = data.get("roadmap", [])
+            s = data.get("stats", {})
+            u = data.get("user", {})
+            streak = s.get("streak", 0)
+            best_streak = max(s.get("best_streak", 16), 16)
+            is_broken = s.get("is_broken", False) or (streak == 0 and (s.get("last_broken_streak", 0) > 0 or s.get("last_broken_day") or s.get("missed", 0) > 0))
+            streak_tasks_remaining = s.get("remaining", 30 if (streak == 0 or is_broken) else max(0, 30 - streak))
+
+            print("\n" + "=" * 76)
+            print(f"🗺️  UNSTOP 30-DAY QUEST TRACKER & STREAK AUDIT — {u.get('name', 'Coder')}")
+            print("=" * 76)
+            if streak == 0 or is_broken:
+                broken_day = s.get("last_broken_day") or "recent day"
+                print(f"🔥 Active Streak:       0 Days (RESET TO 0 after Day {broken_day})")
+            else:
+                started_date = s.get("streak_started_date")
+                started_day = s.get("streak_started_day")
+                days_run = s.get("streak_days_running", streak)
+                print(f"🔥 Active Streak:       {streak} Days (Started: {started_date} on Day {started_day} • {days_run}d active)")
+            print(f"🏆 Best Streak Record:  {best_streak} Days (All-Time Record Preserved)")
+            print(f"✅ Solved Quests:       {s.get('solved', 0)} / 30")
+            print(f"💔 Missed Days:         {s.get('missed', 0)}")
+            print(f"🎯 Tasks Remaining:     {streak_tasks_remaining} for 30-Day Streak ({30 - s.get('solved', 0)} Quests Left)")
+            print("-" * 76)
+            print(f"{'DAY':<8} {'STATUS':<14} {'DATE':<14} {'PROBLEM / QUEST TITLE'}")
+            print("-" * 76)
+
+            today_str = datetime.now(IST).strftime("%Y-%m-%d")
+            today_c = next((item for item in roadmap if (item.get("assigned_date") == today_str or (item.get("solved_at") or "").split("T")[0] == today_str)), None)
+            if not today_c:
+                today_c = next((item for item in roadmap if item.get("status") == "pending"), None)
+            if not today_c:
+                today_c = roadmap[-1] if roadmap else {}
+            cur_day = today_c.get("day", 1)
+            cur_status = today_c.get("status", "pending")
+
+            for item in roadmap:
+                d = item.get("day", 0)
+                st = item.get("status", "upcoming").upper()
+                raw_d = item.get("solved_at") or item.get("assigned_date") or item.get("missed_at") or ""
+                date_str = raw_d.split("T")[0] if "T" in raw_d else (raw_d or "-")
+                title = item.get("title") or f"Day {d} Challenge"
+                if len(title) > 36:
+                    title = title[:33] + "..."
+
+                if st == "SOLVED":
+                    st_icon = "✅ SOLVED"
+                elif st == "MISSED":
+                    st_icon = "💔 MISSED"
+                elif st == "PENDING":
+                    st_icon = "⚡ PENDING"
+                else:
+                    st_icon = "⏳ UPCOMING"
+
+                # Emphasized tags & markers
+                tag = ""
+                if d == cur_day:
+                    tag = f" ⭐ [TODAY • {st}] 🔥" if st == "SOLVED" else " ⚡ [TODAY • PENDING]"
+                elif st == "MISSED":
+                    tag = " 💔 [STREAK RESET TO 0]"
+                elif d == cur_day + 1 and st != "SOLVED":
+                    tag = f" 🎯 [NEXT: {streak + 1}-DAY STREAK]"
+                elif d == 30:
+                    tag = " 🏆 [CHAMPION FINALE]"
+                elif st == "SOLVED" and d >= (s.get("streak_started_day") or 999):
+                    tag = " 🔥 [STREAK ACTIVE]"
+
+                day_str = f"👉 Day {d:<2}" if d == cur_day else f"   Day {d:<2}"
+                print(f"{day_str} {st_icon:<14} {date_str:<14} {title}{tag}")
+
+            print("=" * 84)
+            print("🌟 EMPHASIZED ITEMS SUMMARY:")
+            cur_status_text = "SOLVED ✅ (Protected & Secured)" if cur_status == "solved" else "PENDING ⚡ (Awaiting Solve)"
+            print(f"  ⭐ TODAY'S QUEST (DAY {cur_day}):      {cur_status_text}")
+            started_d = s.get('streak_started_date') or today_str
+            started_day_num = s.get('streak_started_day') or cur_day
+            print(f"  🔥 ACTIVE STREAK RUN:          {streak} Days (Started {started_d} on Day {started_day_num})")
+            if s.get("last_broken_day"):
+                print(f"  💔 STREAK BREAK POINT (DAY {s.get('last_broken_day')}): MISSED (Reset to 0 Days • 30 Tasks Remaining)")
+            if cur_day < 30:
+                print(f"  🎯 NEXT TARGET (DAY {cur_day + 1}):        Upcoming (Solve to reach {streak + 1}-Day Streak)")
+            print(f"  🏆 ALL-TIME BEST RECORD:        {best_streak} Days (Preserved permanent high)")
+            print("=" * 84 + "\n")
+            return
+    except Exception as e:
+        print(f"⚠️ Could not fetch roadmap from server: {e}")
+
+    # Fallback to local DB
+    db_file = DATA_DIR / "challenges.json"
+    if not db_file.exists():
+        db_file = BASE_DIR / "challenges.json"
+    if db_file.exists():
+        try:
+            with open(db_file, "r", encoding="utf-8") as f:
+                db = json.load(f)
+            challenges = db.get("challenges", [])
+            settings = db.get("settings", {})
+            today_str = datetime.now(IST).strftime("%Y-%m-%d")
+            today_c = next((item for item in challenges if (item.get("assigned_date") == today_str or (item.get("solved_at") or "").split("T")[0] == today_str)), None)
+            if not today_c:
+                today_c = next((item for item in challenges if item.get("status") == "pending"), None)
+            if not today_c:
+                today_c = challenges[-1] if challenges else {}
+            cur_day = today_c.get("day", 1)
+            cur_status = today_c.get("status", "pending")
+
+            print("\n" + "=" * 84)
+            print("🗺️  UNSTOP 30-DAY QUEST TRACKER (LOCAL DB AUDIT)")
+            print("=" * 84)
+            print(f"{'DAY':<11} {'STATUS':<14} {'DATE':<14} {'PROBLEM / QUEST TITLE'}")
+            print("-" * 84)
+            for item in sorted(challenges, key=lambda x: x.get("day", 0)):
+                d = item.get("day", 0)
+                st = item.get("status", "upcoming").upper()
+                raw_d = item.get("solved_at") or item.get("assigned_date") or item.get("missed_at") or ""
+                date_str = raw_d.split("T")[0] if "T" in raw_d else (raw_d or "-")
+                title = item.get("title") or f"Day {d} Challenge"
+                if len(title) > 36:
+                    title = title[:33] + "..."
+                st_icon = "✅ SOLVED" if st == "SOLVED" else ("💔 MISSED" if st == "MISSED" else "⏳ " + st)
+
+                tag = ""
+                if d == cur_day:
+                    tag = f" ⭐ [TODAY • {st}] 🔥" if st == "SOLVED" else " ⚡ [TODAY • PENDING]"
+                elif st == "MISSED":
+                    tag = " 💔 [STREAK RESET TO 0]"
+                elif d == cur_day + 1 and st != "SOLVED":
+                    tag = " 🎯 [NEXT TARGET]"
+                elif d == 30:
+                    tag = " 🏆 [CHAMPION FINALE]"
+
+                prefix = "👉 " if d == cur_day else "   "
+                print(f"{prefix}Day {d:<2}  {st_icon:<14} {date_str:<14} {title}{tag}")
+
+            print("=" * 84)
+            print("🌟 EMPHASIZED ITEMS SUMMARY:")
+            print(f"  ⭐ TODAY (DAY {cur_day}):      {cur_status.upper()} {'✅' if cur_status == 'solved' else '⚡'}")
+            if settings.get("last_broken_day"):
+                print(f"  💔 BREAK POINT (DAY {settings.get('last_broken_day')}): MISSED (Reset to 0 • Tasks remaining reset to 30)")
+            print(f"  🏆 BEST RECORD:         {settings.get('best_streak', 16)} Days (Preserved all-time record)")
+            print("=" * 84 + "\n")
+        except Exception as ex:
+            print(f"❌ Failed to load local database: {ex}")
+
 if __name__ == "__main__":
     cmd = sys.argv[1].lower() if len(sys.argv) > 1 else "status"
     if cmd == "status":
         print_status()
+    elif cmd in ("streak", "streak-details", "streaks", "health"):
+        print_streak_details()
+    elif cmd in ("break-test", "test-break", "break"):
+        test_day = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else None
+        test_streak_break(test_day)
+    elif cmd in ("restore", "unbreak", "restore-streak"):
+        test_day = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else None
+        restore_streak(test_day)
+    elif cmd in ("sync", "fetch", "auto-sync"):
+        sync_unstop()
     elif cmd == "solve":
         mark_solved()
+    elif cmd in ("complete", "completed", "notify-complete", "test-complete", "completion-alert"):
+        send_completion_alert()
     elif cmd in ("alert", "phone"):
         force_flag = "--force" in sys.argv or "-f" in sys.argv
         send_alert(force=force_flag)
@@ -458,10 +809,15 @@ if __name__ == "__main__":
         force_flag = "--force" in sys.argv or "-f" in sys.argv
         notifier_script = BASE_DIR / "unstop_laptop_notifier.py"
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
+        startupinfo = None
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0
         args = [sys.executable, str(notifier_script), "--first-open"]
         if force_flag:
             args.append("--force")
-        subprocess.run(args)
+        subprocess.run(args, creationflags=creationflags, startupinfo=startupinfo)
     elif cmd in ("open", "chrome", "open-task", "solve-now"):
         from unstop_laptop_notifier import open_url_in_chrome
         try:
@@ -476,10 +832,14 @@ if __name__ == "__main__":
         open_url_in_chrome(link)
         print(f"\n🚀 Redirected Day {day} challenge directly to Google Chrome!\n🔗 URL: {link}\n")
     elif cmd in ("popup", "test-popup", "card"):
-
         notifier_script = BASE_DIR / "unstop_laptop_notifier.py"
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-        subprocess.Popen([sys.executable, str(notifier_script), "--popup"])
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
+        startupinfo = None
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0
+        subprocess.Popen([sys.executable, str(notifier_script), "--popup"], creationflags=creationflags, startupinfo=startupinfo)
         print("\n✨ Home screen interactive popup card launched to your screen!\n")
     elif cmd == "roadmap":
         print_roadmap()

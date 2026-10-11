@@ -158,10 +158,10 @@ async function sendPushToAll(payload) {
 }
 
 // ─── Phone Push Notification (ntfy.sh) ─────────────────────────────────────────
-async function sendPhonePush(title, body, challengeLink, isRepeat = false) {
+async function sendPhonePush(title, body, challengeLink, customTags = 'fire', priority = 'high') {
   const user = db.getUserProfile();
   const topic = process.env.NTFY_TOPIC || user.ntfyTopic || 'animesh_unstop_streak';
-  const cleanTitle = 'Unstop Challenge Alert';
+  const cleanTitle = title || 'Unstop Challenge Alert';
   const safeLink = db.sanitizeUrl(challengeLink) || 'https://unstop.com/practice/coding';
 
   try {
@@ -170,8 +170,8 @@ async function sendPhonePush(title, body, challengeLink, isRepeat = false) {
       body: String(body),
       headers: {
         Title: cleanTitle,
-        Priority: 'high',
-        Tags: 'fire',
+        Priority: priority,
+        Tags: customTags,
         Click: safeLink,
       },
     });
@@ -384,15 +384,37 @@ app.get('/api/roadmap', (req, res) => {
 
 // ─── Protected Mutation Endpoints (requireAuth + sensitiveActionLimiter) ───────
 
-app.post('/api/solve', sensitiveActionLimiter, requireAuth, (req, res) => {
+app.post('/api/solve', sensitiveActionLimiter, requireAuth, async (req, res) => {
   const challenge = db.getOrCreateTodayChallenge();
   if (!challenge) return res.status(404).json({ error: 'No challenge found for today' });
 
   db.updateChallengeStatus(challenge.day, 'solved');
   console.log(`🎉 Day ${challenge.day} marked as SOLVED!`);
+
+  const stats = db.getStats();
+  const user = db.getUserProfile();
+  const firstName = user.name ? user.name.split(' ')[0] : 'Coder';
+  const link = challenge.link || user.practiceUrl || 'https://unstop.com/practice/coding';
+  const streak = stats.streak;
+
+  const notifyOnComplete = db.getSetting('notify_on_complete') !== 'false' && process.env.NOTIFY_ON_COMPLETE !== 'false';
+  if (notifyOnComplete) {
+    const title = `🎉 Unstop Day ${challenge.day} Solved!`;
+    const body = `Awesome work ${firstName}! Day ${challenge.day} marked SOLVED. Current streak: ${streak} Days! 🔥`;
+    await sendPhonePush(title, body, link, 'tada,fire,trophy', 'high');
+    await sendPushToAll({
+      title: '🎉 Challenge Solved & Streak Secured!',
+      body,
+      link,
+      tag: `unstop-solved-day-${challenge.day}`,
+      isCompletion: true,
+    });
+  }
+
   res.json({
     success: true,
     day: challenge.day,
+    streak,
     message: `Day ${challenge.day} solved! Great job! 🎉`,
   });
 });
@@ -427,6 +449,31 @@ app.post('/api/test-notify', sensitiveActionLimiter, requireAuth, async (req, re
     res.json({ success: true, message: 'Test notification sent!' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to send notification' });
+  }
+});
+
+app.post('/api/test-complete', sensitiveActionLimiter, requireAuth, async (req, res) => {
+  try {
+    const challenge = db.getOrCreateTodayChallenge();
+    const stats = db.getStats();
+    const user = db.getUserProfile();
+    const firstName = user.name ? user.name.split(' ')[0] : 'Coder';
+    const link = challenge.link || user.practiceUrl || 'https://unstop.com/practice/coding';
+    const streak = stats.streak;
+    const title = `🎉 Unstop Day ${challenge.day} Solved!`;
+    const body = `Awesome work ${firstName}! Day ${challenge.day} marked SOLVED. Current streak: ${streak} Days! 🔥`;
+
+    await sendPhonePush(title, body, link, 'tada,fire,trophy', 'high');
+    await sendPushToAll({
+      title: '🎉 Challenge Solved & Streak Secured!',
+      body,
+      link,
+      tag: `unstop-solved-day-${challenge.day}`,
+      isCompletion: true,
+    });
+    res.json({ success: true, message: 'Completion notification sent!' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to send completion notification' });
   }
 });
 

@@ -92,4 +92,19 @@ Whenever you open your laptop for the first time in the day:
    ```
    Or click **"☀️ Test Home Screen Popup"** on the Web Dashboard!
 
+---
+
+## ⚡ Zero-Click Auto-Detection & Notification Suppression
+
+If you complete today's coding quest directly on Unstop in Google Chrome or Edge **without clicking any notification buttons**:
+1. **Automatic Challenge Fetching**: The background service automatically detects your Unstop coding practice activity from browser history, pulls the exact problem name (e.g., *Dev's Momentum Ledger*) and problem URL (`https://unstop.com/code/practice/...`).
+2. **Auto-Marked as Solved**: Today's challenge is automatically marked as `solved` with the problem title and timestamp in `challenges.json`.
+3. **Zero Repetitive Notifications**: All home screen popups, Windows toasts, and mobile phone alerts are **immediately and completely suppressed** for the rest of the day.
+4. **Live Popup Auto-Dismiss**: If the popup card is active on your screen when you complete the challenge on Unstop, it automatically detects the completion within seconds, displays a success celebration, and closes itself!
+5. **Manual Sync Command**:
+   ```bash
+   python unstop_cli.py sync
+   ```
+
+
 

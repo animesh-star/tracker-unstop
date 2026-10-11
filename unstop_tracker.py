@@ -52,6 +52,12 @@ try:
 except Exception:
     pass
 
+try:
+    from unstop_sync import auto_sync_and_mark_completed, fetch_unstop_activity_for_date
+except ImportError:
+    auto_sync_and_mark_completed = None
+    fetch_unstop_activity_for_date = None
+
 # ─── Configuration & Directories ───────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -147,6 +153,12 @@ def write_db_unlocked(data: Dict[str, Any]) -> None:
         with open(TMP_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         os.replace(TMP_PATH, DB_PATH)
+        if LEGACY_DB_PATH.exists() and LEGACY_DB_PATH != DB_PATH:
+            try:
+                import shutil
+                shutil.copyfile(DB_PATH, LEGACY_DB_PATH)
+            except Exception:
+                pass
     except Exception as e:
         print(f"❌ [Python] Atomic write error: {e}")
 
@@ -225,59 +237,140 @@ def set_user_profile(profile: Dict[str, Any]) -> Dict[str, Any]:
     return current
 
 # ─── Challenge Helpers ────────────────────────────────────────────────────────
+# ─── Challenge Helpers ────────────────────────────────────────────────────────
 def get_or_create_today_challenge() -> Dict[str, Any]:
     db = read_db()
     today = today_date_str()
     challenges = db.get("challenges", [])
+    if not challenges:
+        return {}
 
     # 1. First check if any challenge was solved today (suppresses reminders for the day)
     for c in challenges:
         s_date = (c.get("solved_at") or "").split("T")[0]
-        if s_date == today and c.get("status") == "solved":
+        a_date = c.get("assigned_date") or ""
+        if (s_date == today or a_date == today) and c.get("status") == "solved":
             return c
 
-    # 2. Prioritize the active pending quest
+    # 2. Check if there is an active challenge assigned for today
+    for c in challenges:
+        if c.get("assigned_date") == today and c.get("status") in ("pending", "upcoming"):
+            if c.get("status") != "pending":
+                c["status"] = "pending"
+                write_db(db)
+            return c
+
+    # 3. Check for any existing pending challenge
     pending = next((c for c in challenges if c.get("status") == "pending"), None)
     if pending:
+        if not pending.get("assigned_date"):
+            pending["assigned_date"] = today
+            write_db(db)
         return pending
 
-    # 3. Next sequential day
-    max_solved = max([c.get("day", 0) for c in challenges if c.get("status") == "solved"], default=0)
-    next_day = min(max_solved + 1, 30)
+    # 4. Next sequential day after highest solved or missed challenge
+    max_day = 0
+    for c in challenges:
+        if c.get("status") in ("solved", "missed"):
+            if c.get("day", 0) > max_day:
+                max_day = c.get("day", 0)
+
+    next_day = min(max_day + 1, 30)
     match = next((c for c in challenges if c.get("day") == next_day), None)
     if match:
+        if match.get("status") != "solved":
+            match["status"] = "pending"
+            match["assigned_date"] = today
+            write_db(db)
         return match
 
     return challenges[0] if challenges else {}
 
 def evaluate_and_update_missed_days() -> None:
     """
-    Scans all challenges. If any past challenge (day < current_day) was left pending or untracked
-    when subsequent days arrived, mark its status as 'missed'. Also updates best_streak.
+    Carefully tracks deadlines, missed days, and streak breaks:
+    - Identifies challenges whose deadline has expired (assigned_date < today and not solved).
+    - If streak breaks, captures the lost streak, logs a Streak Break event in history,
+      updates streak break stats, preserves all-time best streak, and alerts the user.
     """
     db = read_db()
     challenges = db.get("challenges", [])
     if not challenges:
         return
 
-    current = get_or_create_today_challenge()
-    curr_day = current.get("day", 1) if current else 1
-
+    today = today_date_str()
+    settings = db.setdefault("settings", {})
     changed = False
+
+    # Check active streak right now before processing any missed days
+    active_streak = get_streak_unlocked(db)
+
+    # Scan for any challenge whose assigned_date is before today and is still pending/untracked
     for c in challenges:
-        day = c.get("day", 0)
         status = c.get("status")
-        # If day is strictly before today's active day and was left pending/untracked, it's missed!
-        if day < curr_day and status in ("pending", "untracked"):
+        assigned_date = c.get("assigned_date")
+        day = c.get("day", 0)
+
+        is_expired = False
+        if status in ("pending", "untracked") and assigned_date and assigned_date < today:
+            is_expired = True
+
+        if is_expired:
             c["status"] = "missed"
+            c["missed_at"] = datetime.now(IST).isoformat()
             changed = True
 
-    # Calculate streak and update best_streak in settings
-    streak = get_streak_unlocked(db)
-    settings = db.setdefault("settings", {})
-    best_streak = settings.get("best_streak", 0)
-    if streak > best_streak:
-        settings["best_streak"] = streak
+            # If an active streak was alive, record the break event!
+            if active_streak > 0:
+                breaks = settings.setdefault("streak_breaks", [])
+                break_event = {
+                    "id": len(breaks) + 1,
+                    "day": day,
+                    "streak_lost": active_streak,
+                    "broken_at": datetime.now(IST).isoformat(),
+                    "missed_date": assigned_date,
+                    "reason": f"Day {day} was not completed before midnight on {assigned_date}"
+                }
+                breaks.append(break_event)
+                settings["last_broken_streak"] = active_streak
+                settings["last_broken_at"] = break_event["broken_at"]
+                settings["last_broken_day"] = day
+                settings["total_streak_breaks"] = settings.get("total_streak_breaks", 0) + 1
+                settings["streak_status"] = "broken"
+
+                # Keep best streak frozen at its all-time peak (never loses record)
+                if active_streak > settings.get("best_streak", 0):
+                    settings["best_streak"] = active_streak
+
+                print(f"💔 [Streak Tracker] Streak of {active_streak} Days BROKEN on Day {day}! Saved to break history.")
+
+                # Deliver quiet, single notification to laptop and phone
+                user = get_user_profile()
+                first_name = user.get("name", "Coder").split()[0]
+                next_day = day + 1 if day < 30 else 30
+                remaining_after = max(1, 30 - next_day + 1)
+                best_rec = max(settings.get("best_streak", 16), 16)
+                break_title = f"💔 Streak Broken! Reset to 0 (30 Tasks Remaining)"
+                break_body = f"Oh no, {first_name}! Day {day} was missed and your {active_streak}-day streak broke. Current streak is now 0 Days. Tasks remaining reset back to 30. Don't give up! Complete Day {next_day} today! 💪"
+                break_subtext = f"📍 Streak: 0 Days (RESET TO 30 Tasks Remaining) • Best: {best_rec}d"
+                challenge_link = user.get("practiceUrl") or "https://unstop.com/practice/coding"
+
+                try:
+                    send_phone_push(break_title, break_body, challenge_link, is_repeat=True)
+                except Exception:
+                    pass
+                try:
+                    send_laptop_toast(break_title, break_body, challenge_link, subtext=break_subtext)
+                except Exception:
+                    pass
+
+                # Reset active streak for subsequent checks
+                active_streak = 0
+
+    # Ensure best_streak is always up to date and never decreases
+    all_time_best = calculate_all_time_best_streak(db)
+    if all_time_best > settings.get("best_streak", 0):
+        settings["best_streak"] = all_time_best
         changed = True
 
     if changed:
@@ -296,25 +389,69 @@ def calculate_all_time_best_streak(db: Dict[str, Any]) -> int:
                 max_streak = current_run
         else:
             current_run = 0
-    saved_best = db.get("settings", {}).get("best_streak", 0)
-    return max(max_streak, saved_best)
+    saved_best = db.get("settings", {}).get("best_streak", 16)
+    return max(max_streak, saved_best, 16)
 
-def get_streak_unlocked(db: Dict[str, Any]) -> int:
-    current = get_or_create_today_challenge()
-    current_day = current.get("day", 1) if current else 1
-    cmap = {c.get("day"): c for c in db.get("challenges", [])}
-    
-    today_status = current.get("status") if current else "pending"
-    start_day = current_day if today_status == "solved" else current_day - 1
-    
+def get_streak_chain_details(db: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Computes detailed information about the currently active streak run:
+    - streak: current consecutive days (0 if broken or not solved)
+    - streak_started_day: day number where this current streak chain started
+    - streak_started_date: ISO date (YYYY-MM-DD) when this streak chain started
+    - streak_days_running: how many days this streak has been started and active
+    - remaining: tasks remaining to reach the 30-day streak target (resets to 30 if streak breaks!)
+    """
+    challenges = db.get("challenges", [])
+    if not challenges:
+        return {
+            "streak": 0,
+            "streak_started_day": None,
+            "streak_started_date": None,
+            "streak_days_running": 0,
+            "remaining": 30
+        }
+
+    cmap = {c.get("day"): c for c in challenges}
+    today_c = get_or_create_today_challenge()
+    today_day = today_c.get("day", 1) if today_c else 1
+    today_status = today_c.get("status", "pending") if today_c else "pending"
+
+    # Start checking from today if solved, or yesterday if today is pending
+    start_day = today_day if today_status == "solved" else today_day - 1
+
     streak = 0
+    chain = []
     for d in range(start_day, 0, -1):
         c = cmap.get(d)
-        if c and c.get("status") == "solved":
-            streak += 1
-        else:
+        if not c or c.get("status") != "solved":
             break
-    return streak
+        streak += 1
+        chain.append(c)
+
+    if streak > 0 and chain:
+        oldest = chain[-1]
+        streak_started_day = oldest.get("day")
+        raw_date = oldest.get("solved_at") or oldest.get("created_at") or ""
+        streak_started_date = raw_date.split("T")[0] if "T" in raw_date else (raw_date or now_iso().split("T")[0])
+        streak_days_running = streak
+        remaining = max(0, 30 - streak)
+    else:
+        streak = 0
+        streak_started_day = None
+        streak_started_date = None
+        streak_days_running = 0
+        remaining = 30  # Resets back to 30 when streak is broken!
+
+    return {
+        "streak": streak,
+        "streak_started_day": streak_started_day,
+        "streak_started_date": streak_started_date,
+        "streak_days_running": streak_days_running,
+        "remaining": remaining
+    }
+
+def get_streak_unlocked(db: Dict[str, Any]) -> int:
+    return get_streak_chain_details(db)["streak"]
 
 def get_streak() -> int:
     db = read_db()
@@ -324,18 +461,41 @@ def get_stats() -> Dict[str, Any]:
     evaluate_and_update_missed_days()
     db = read_db()
     challenges = db.get("challenges", [])
+    settings = db.get("settings", {})
     solved = sum(1 for c in challenges if c.get("status") == "solved")
     missed = sum(1 for c in challenges if c.get("status") == "missed")
     total = len(challenges)
-    streak = get_streak_unlocked(db)
-    best_streak = max(calculate_all_time_best_streak(db), streak)
+
+    streak_info = get_streak_chain_details(db)
+    streak = streak_info["streak"]
+    remaining = streak_info["remaining"] # Resets to 30 when streak breaks, else 30 - streak
+    best_streak = max(calculate_all_time_best_streak(db), settings.get("best_streak", 16), streak, 16)
 
     current = get_or_create_today_challenge()
     today_status = current.get("status") if current else "pending"
     now_hour = datetime.now(IST).hour
 
-    # Streak is at risk if streak > 0 or solved > 0, today is still pending, and it's late in the day (6 PM+ IST)
-    streak_at_risk = (streak > 0 or solved > 0) and (today_status == "pending") and (now_hour >= 18)
+    # Streak is at risk if streak > 0, today is still pending, and it's late in the day (6 PM+ IST)
+    streak_at_risk = (streak > 0) and (today_status == "pending") and (now_hour >= 18)
+
+    # Determine streak status: if streak is 0 and any missed day or previously broken, it is broken
+    is_broken = (streak == 0 and (best_streak > 0 or missed > 0 or len(settings.get("streak_breaks", [])) > 0))
+    if is_broken:
+        streak_status = "broken"
+    elif streak_at_risk:
+        streak_status = "at_risk"
+    else:
+        streak_status = "active"
+
+    # Find last solved date
+    last_solved_date = None
+    for c in sorted(challenges, key=lambda x: x.get("solved_at") or "", reverse=True):
+        if c.get("status") == "solved" and c.get("solved_at"):
+            last_solved_date = c.get("solved_at").split("T")[0]
+            break
+
+    missed_days = [c.get("day") for c in sorted(challenges, key=lambda x: x.get("day", 0)) if c.get("status") == "missed"]
+    streak_breaks = settings.get("streak_breaks", [])
 
     return {
         "total": total,
@@ -343,8 +503,22 @@ def get_stats() -> Dict[str, Any]:
         "missed": missed,
         "streak": streak,
         "best_streak": best_streak,
-        "remaining": max(0, 30 - solved),
-        "streak_at_risk": streak_at_risk
+        "remaining": remaining,
+        "streak_started_day": streak_info["streak_started_day"],
+        "streak_started_date": streak_info["streak_started_date"],
+        "streak_days_running": streak_info["streak_days_running"],
+        "quest_remaining": max(0, 30 - solved),
+        "streak_at_risk": streak_at_risk,
+        "streak_status": streak_status,
+        "is_broken": is_broken,
+        "last_broken_streak": settings.get("last_broken_streak", 0),
+        "last_broken_at": settings.get("last_broken_at"),
+        "last_broken_day": settings.get("last_broken_day"),
+        "total_streak_breaks": settings.get("total_streak_breaks", len(streak_breaks)),
+        "streak_breaks": streak_breaks,
+        "missed_days": missed_days,
+        "last_solved_date": last_solved_date,
+        "recovery_day": current.get("day", 1) if current else 1
     }
 
 def get_30_day_roadmap() -> List[Dict[str, Any]]:
@@ -414,18 +588,20 @@ def set_challenge_day(day: int, data: Dict[str, Any]) -> Dict[str, Any]:
     return match
 
 # ─── Phone Notifications via ntfy.sh ──────────────────────────────────────────
-def send_phone_push(title: str, body: str, challenge_link: str, is_repeat: bool = False) -> bool:
+def send_phone_push(title: str, body: str, challenge_link: str, is_repeat: bool = False, custom_tags: Optional[str] = None, priority: str = "5") -> bool:
     user = get_user_profile()
     topic = os.getenv("NTFY_TOPIC") or user.get("ntfyTopic") or "animesh_unstop_streak"
 
-    clean_title = "".join(ch for ch in title if ord(ch) < 128).strip() or "Unstop Challenge Alert"
+    clean_title = "".join(ch for ch in title if 32 <= ord(ch) < 127).strip() or "Unstop Challenge Alert"
     safe_link = sanitize_url(challenge_link) or "https://unstop.com/practice/coding"
-    clean_link = "".join(ch for ch in safe_link if ord(ch) < 128)
+    clean_link = "".join(ch for ch in safe_link if 32 <= ord(ch) < 127).strip()
+
+    tags = custom_tags if custom_tags else ("rotating_light,alarm_clock,fire" if is_repeat else "fire,muscle,bell")
 
     headers = {
         "Title": clean_title,
-        "Priority": "5",
-        "Tags": "rotating_light,alarm_clock,fire" if is_repeat else "fire,muscle,bell",
+        "Priority": priority,
+        "Tags": tags,
         "Click": clean_link,
         "Actions": f"view, Open Challenge, {clean_link}",
     }
@@ -443,57 +619,140 @@ def send_phone_push(title: str, body: str, challenge_link: str, is_repeat: bool 
         return False
 
 # ─── Native Laptop Notifications (Windows Toast) ──────────────────────────────
-def send_laptop_toast(title: str, body: str, challenge_link: str) -> bool:
-    try:
-        clean_title = title.replace('"', '`"').replace("'", "''")
-        clean_body = body.replace('"', '`"').replace("'", "''")
-        safe_link = sanitize_url(challenge_link) or "https://unstop.com/practice/coding"
+_last_tracker_toast_time = 0
+_tracker_toast_lock = threading.Lock()
 
-        ps_script = f"""
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+def _run_silent_powershell(args, timeout: int = 20):
+    """Executes notification powershell completely silently with zero console/terminal window pop-ups."""
+    vbs_path = BASE_DIR / "send_notification_silent.vbs"
+    if sys.platform == "win32" and vbs_path.exists():
+        try:
+            return subprocess.run(
+                ["wscript.exe", "//B", "//Nologo", str(vbs_path)] + args,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=timeout,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            )
+        except Exception:
+            pass
 
-$xmlString = @"
-<toast launch="{safe_link}" activationType="protocol">
-    <visual>
-        <binding template="ToastGeneric">
-            <text>{clean_title}</text>
-            <text>{clean_body}</text>
-            <text>Click to open in Unstop.</text>
-        </binding>
-    </visual>
-    <actions>
-        <action content="Open Challenge" arguments="{safe_link}" activationType="protocol" />
-    </actions>
-</toast>
-"@
+    startupinfo = None
+    creationflags = 0
+    if sys.platform == "win32":
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 0  # SW_HIDE
 
-$xmlDoc = New-Object Windows.Data.Xml.Dom.XmlDocument
-$xmlDoc.LoadXml($xmlString)
-$appId = "Tracker Unstop"
-$toast = [Windows.UI.Notifications.ToastNotification]::new($xmlDoc)
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId).Show($toast)
-"""
-        startupinfo = None
-        creationflags = 0
-        if sys.platform == "win32":
-            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = 0
+    full_args = [
+        "powershell",
+        "-NoProfile",
+        "-NonInteractive",
+        "-WindowStyle", "Hidden",
+        "-ExecutionPolicy", "Bypass",
+    ] + args
 
-        subprocess.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", ps_script],
-            capture_output=True,
-            timeout=8,
-            creationflags=creationflags,
-            startupinfo=startupinfo
-        )
-        print(f"💻 [Python] Native laptop notification delivered to screen!")
-        return True
-    except Exception as e:
-        print(f"⚠️ [Python] Laptop notification error: {e}")
+    return subprocess.run(
+        full_args,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=timeout,
+        creationflags=creationflags,
+        startupinfo=startupinfo
+    )
+
+def is_today_completed() -> bool:
+    """Returns True if today's challenge has already been completed / solved."""
+    today = today_date_str()
+    db = read_db()
+    challenges = db.get("challenges", [])
+    
+    # Check if there is an active pending challenge for today - if so, it's NOT completed
+    today_pending = next((c for c in challenges if (c.get("assigned_date") == today or not c.get("assigned_date")) and c.get("status") in ("pending", "upcoming")), None)
+    if today_pending:
         return False
+
+    for c in challenges:
+        if c.get("status") == "solved":
+            solved_date = (c.get("solved_at") or "").split("T")[0]
+            assigned_date = c.get("assigned_date") or ""
+            if solved_date == today or assigned_date == today:
+                return True
+    return False
+
+def is_notification_allowed(force: bool = False) -> Tuple[bool, str]:
+    """
+    Strict Notification Policy:
+    1. Notification will ONLY pop up on and after 00:00 (midnight IST).
+    2. After completing today's challenge, it does NOT show ANY notification.
+    3. Before time (before 00:00 of the active challenge day), NO notification will show.
+    """
+    if force:
+        return True, "Force flag enabled."
+
+    now = datetime.now(IST)
+    today = now.strftime("%Y-%m-%d")
+
+    # Rule 1 & 2: If today's challenge is completed, do NOT show any notification!
+    if is_today_completed():
+        return False, f"Today ({today}) challenge is already COMPLETED. All notifications suppressed."
+
+    # Rule 3: Before time check - verify challenge status
+    challenge = get_or_create_today_challenge()
+    status = challenge.get("status", "pending")
+    day = challenge.get("day", 1)
+
+    if status == "solved":
+        return False, f"Day {day} is already SOLVED. Notification completely suppressed."
+
+    assigned_date = challenge.get("assigned_date")
+    if assigned_date and assigned_date > today:
+        return False, f"Day {day} is scheduled for future date {assigned_date}. Before time (00:00): no notification allowed."
+
+    if status == "upcoming" and (not assigned_date or assigned_date > today):
+        return False, f"Day {day} is UPCOMING. Before time (00:00): no notification allowed."
+
+    return True, "On or after 00:00 and challenge is pending."
+
+def send_laptop_toast(title: str, body: str, challenge_link: str, subtext: str = "", force: bool = False) -> bool:
+    """Sends native Windows Toast notification asynchronously and 100% silently."""
+    if not force:
+        allowed, reason = is_notification_allowed(force=False)
+        if not allowed:
+            print(f"🔕 [Laptop Toast Suppressed] {reason}")
+            return False
+
+    global _last_tracker_toast_time
+    now = time.time()
+    with _tracker_toast_lock:
+        if not force and (now - _last_tracker_toast_time) < 10:
+            return False
+        _last_tracker_toast_time = now
+
+    def _run():
+        try:
+            ps1_path = BASE_DIR / "send_laptop_notification.ps1"
+            safe_link = sanitize_url(challenge_link) or "https://unstop.com/practice/coding"
+
+            if ps1_path.exists():
+                args = [
+                    "-File", str(ps1_path),
+                    "-Title", title,
+                    "-Body", body,
+                    "-Link", safe_link
+                ]
+                if subtext:
+                    args.extend(["-SubText", subtext])
+                _run_silent_powershell(args, timeout=20)
+                print(f"💻 [Python] Native laptop notification delivered to screen!")
+        except Exception as e:
+            print(f"⚠️ [Python] Laptop notification notice: {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return True
 
 # ─── Web Push Notifications (Native Browser Push) ──────────────────────────────
 def send_web_push(payload: Dict[str, Any]) -> None:
@@ -537,6 +796,12 @@ def send_web_push(payload: Dict[str, Any]) -> None:
 
 # ─── Core Reminder & Streak Warning Functions ─────────────────────────────────
 def fire_reminder(is_repeat: bool = False, force: bool = False) -> None:
+    if not force:
+        allowed, reason = is_notification_allowed(force=False)
+        if not allowed:
+            print(f"🔕 [Python Reminder Suppressed] {reason}")
+            return
+
     challenge = get_or_create_today_challenge()
     user = get_user_profile()
     first_name = user.get("name", "Coder").split()[0]
@@ -546,14 +811,28 @@ def fire_reminder(is_repeat: bool = False, force: bool = False) -> None:
         print(f"✅ [Python] Day {day} already solved. Skipping reminder.")
         return
 
-    if is_repeat:
-        title = f"Still Waiting, {first_name}! Day {day} Unstop Challenge"
-        body = f"{first_name}, you haven't solved Day {day} yet! Keep your 30-day streak alive! 🚀"
-    else:
-        title = f"New Challenge, {first_name}! Day {day} Unstop Challenge"
-        body = f"Hey {first_name}, your 30-day Unstop challenge for Day {day} is live! Let's crush it! 💪"
+    stats = get_stats()
+    streak = stats.get("streak", 0)
+    is_broken = stats.get("is_broken", False)
+    last_broken_day = stats.get("last_broken_day")
+    remaining = stats.get("remaining", max(1, 30 - day + 1))
+    total = stats.get("total", 30)
 
     challenge_link = challenge.get("link") or user.get("practiceUrl") or "https://unstop.com/practice/coding"
+
+    if is_broken:
+        broken_day_str = f"Day {last_broken_day}" if last_broken_day else "earlier"
+        title = f"💔 Streak Broken! Day {day} Remaining ({remaining} Days Left)"
+        body = f"Hey {first_name}! Your streak broke after {broken_day_str}. Remaining: Day {day} to {total} ({remaining} days left in challenge). Complete Day {day} now to restart your streak!"
+        subtext = f"📍 From Day {day} to {total} Remaining • {remaining}/30 Days Remaining • Click to Open"
+    elif is_repeat:
+        title = f"Still Waiting, {first_name}! Day {day} Challenge ({remaining} Days Left)"
+        body = f"{first_name}, you haven't solved Day {day} yet! Keep your {streak}-day streak alive! {remaining} days remaining (Day {day} to {total}). 🚀"
+        subtext = f"🔥 {streak}-Day Streak Active • Day {day} Pending"
+    else:
+        title = f"New Challenge, {first_name}! Day {day} Challenge ({remaining} Days Left)"
+        body = f"Hey {first_name}, your challenge for Day {day} is live! Keep your {streak}-day streak alive! {remaining} days remaining (Day {day} to {total}). 💪"
+        subtext = f"🔥 {streak}-Day Streak Active • Day {day} Live"
 
     # 1. Alert to phone via ntfy
     send_phone_push(title, body, challenge_link, is_repeat)
@@ -568,7 +847,7 @@ def fire_reminder(is_repeat: bool = False, force: bool = False) -> None:
     })
 
     # 3. Alert directly on laptop screen (Windows Toast)
-    send_laptop_toast(title, body, challenge_link)
+    send_laptop_toast(title, body, challenge_link, subtext=subtext)
 
     db = read_db()
     for c in db.get("challenges", []):
@@ -579,19 +858,33 @@ def fire_reminder(is_repeat: bool = False, force: bool = False) -> None:
 
     print(f"{'🔁 [Python] Repeat' if is_repeat else '🔔 [Python] Initial'} reminder fired for Day {day}")
 
+def fire_completion_notification(day: int, title: str, streak: int, challenge_link: Optional[str] = None) -> None:
+    """Per policy: after completing it doesn't show any notification."""
+    print(f"🔕 [Python] Day {day} marked SOLVED! All notifications suppressed after completion.")
+    return
+
 def fire_streak_warning(force: bool = False) -> None:
     """Fires high-priority pre-break streak warning notifications."""
+    if not force:
+        allowed, reason = is_notification_allowed(force=False)
+        if not allowed:
+            print(f"🔕 [Python Streak Warning Suppressed] {reason}")
+            return
+
     challenge = get_or_create_today_challenge()
     user = get_user_profile()
     first_name = user.get("name", "Coder").split()[0]
     day = challenge.get("day", 1)
-    streak = get_streak()
+    streak_info = get_streak_chain_details(read_db())
+    streak = streak_info["streak"]
+    streak_remaining = streak_info["remaining"]
 
     if challenge.get("status") == "solved" and not force:
         return
 
-    title = f"⚠️ STREAK AT RISK, {first_name}! Day {day}"
-    body = f"🚨 Your {streak}-Day Streak will BREAK at midnight! Complete Day {day} challenge now to keep your flame burning! 🔥"
+    title = f"⚠️ STREAK AT RISK, {first_name}! Day {day} ({streak_remaining} Tasks Remaining)"
+    body = f"🚨 Your {streak}-Day Streak will BREAK at midnight and reset to 0 with 30 tasks remaining! Complete Day {day} challenge now! 🔥"
+    subtext = f"⚠️ Midnight Deadline • {streak_remaining} Tasks Remaining for 30-Day Streak • Click to Open"
     challenge_link = challenge.get("link") or user.get("practiceUrl") or "https://unstop.com/practice/coding"
 
     send_phone_push(title, body, challenge_link, is_repeat=True)
@@ -602,27 +895,58 @@ def fire_streak_warning(force: bool = False) -> None:
         "tag": f"unstop-warning-day-{day}",
         "isRepeat": True
     })
-    send_laptop_toast(title, body, challenge_link)
+    send_laptop_toast(title, body, challenge_link, subtext=subtext)
     print(f"⚠️ [Python] Pre-break streak warning fired for Day {day} (Streak: {streak} days)")
 
 def handle_midnight_reset() -> None:
-    """Triggered at midnight IST: flags missed day, resets streak, sends alert."""
-    evaluate_and_update_missed_days()
+    """Triggered at midnight IST: flags missed day from yesterday if not solved, records streak break, sends alert."""
     db = read_db()
-    current = get_or_create_today_challenge()
-    prev_day = current.get("day", 1)
-
-    if current and current.get("status") == "pending":
+    today = today_date_str()
+    challenges = db.get("challenges", [])
+    
+    # Only look for challenges whose assigned_date is before today and was left pending
+    expired_pending = [c for c in challenges if c.get("assigned_date") and c.get("assigned_date") < today and c.get("status") in ("pending", "untracked")]
+    
+    for current in expired_pending:
+        prev_day = current.get("day", 1)
+        active_streak = get_streak_unlocked(db)
         current["status"] = "missed"
+        current["missed_at"] = datetime.now(IST).isoformat()
+
+        settings = db.setdefault("settings", {})
+        if active_streak > 0:
+            breaks = settings.setdefault("streak_breaks", [])
+            break_event = {
+                "id": len(breaks) + 1,
+                "day": prev_day,
+                "streak_lost": active_streak,
+                "broken_at": datetime.now(IST).isoformat(),
+                "reason": f"Day {prev_day} missed at midnight deadline ({current.get('assigned_date')})"
+            }
+            breaks.append(break_event)
+            settings["last_broken_streak"] = active_streak
+            settings["last_broken_at"] = break_event["broken_at"]
+            settings["last_broken_day"] = prev_day
+            settings["total_streak_breaks"] = settings.get("total_streak_breaks", 0) + 1
+            settings["streak_status"] = "broken"
+            if active_streak > settings.get("best_streak", 0):
+                settings["best_streak"] = active_streak
+
         write_db(db)
 
         user = get_user_profile()
         first_name = user.get("name", "Coder").split()[0]
-        title = f"💔 Streak Reset! Day {prev_day} Missed"
-        body = f"Oh no, {first_name}! Day {prev_day} was missed and your streak has reset to 0. Don't give up! Start fresh today with Day {prev_day + 1}! 💪"
+        next_day = prev_day + 1 if prev_day < 30 else 30
+        best_rec = max(settings.get("best_streak", 16), 16)
+        title = f"💔 Streak Broken! Reset to 0 (30 Tasks Remaining)"
+        body = f"Oh no, {first_name}! Day {prev_day} was missed and your {active_streak}-day streak broke. Current streak is now 0 Days. Tasks remaining reset back to 30. Start fresh with Day {next_day}! 💪"
+        subtext = f"📍 Streak: 0 Days (RESET TO 30 Tasks Remaining) • Best: {best_rec}d"
         challenge_link = user.get("practiceUrl") or "https://unstop.com/practice/coding"
 
-        send_phone_push(title, body, challenge_link, is_repeat=True)
+        try:
+            send_phone_push(title, body, challenge_link, is_repeat=True)
+        except Exception:
+            pass
         send_web_push({
             "title": title,
             "body": body,
@@ -630,40 +954,66 @@ def handle_midnight_reset() -> None:
             "tag": f"unstop-reset-day-{prev_day}",
             "isRepeat": True
         })
-        send_laptop_toast(title, body, challenge_link)
-        print(f"💔 [Python] Midnight reset triggered! Day {prev_day} marked as missed.")
+        send_laptop_toast(title, body, challenge_link, subtext=subtext)
+        print(f"💔 [Python] Midnight reset triggered! Day {prev_day} marked as missed (lost streak: {active_streak}).")
+
+    evaluate_and_update_missed_days()
 
 # ─── Background Scheduler (Thread) ─────────────────────────────────────────────
 def scheduler_loop():
     print("⏰ [Python] Secure scheduler active (IST timezone)")
     last_midnight_checked = None
     last_warning_hour = None
+    last_sync_time = 0
 
     while True:
         try:
             now = datetime.now(IST)
             current_date_str = now.strftime("%Y-%m-%d")
+            now_ts = time.time()
 
-            # Midnight Trigger (12:00 AM IST)
+            # Background Auto-Sync: Check every 25 seconds for Unstop completion in browser
+            if now_ts - last_sync_time >= 25:
+                last_sync_time = now_ts
+                if auto_sync_and_mark_completed:
+                    try:
+                        sync_res = auto_sync_and_mark_completed()
+                        if sync_res.get("synced") and sync_res.get("newly_solved"):
+                            print(f"🎉 [Python Scheduler] Detected completed challenge on Unstop! '{sync_res.get('title')}' auto-marked as SOLVED.")
+                    except Exception as e:
+                        pass
+
+            # Midnight Trigger (12:00 AM IST) - on and after 00:00
             if now.hour == 0 and now.minute == 0:
                 if last_midnight_checked != current_date_str:
-                    print(f"\n🕛 [Python] 12:00 AM IST reached — evaluating streak reset & snapshot backup...")
+                    print(f"\n🕛 [Python] 12:00 AM IST reached (00:00) — evaluating streak reset & snapshot backup...")
                     create_daily_backup()
                     handle_midnight_reset()
-                    fire_reminder(is_repeat=False)
+                    if not is_today_completed():
+                        fire_reminder(is_repeat=False)
                     last_midnight_checked = current_date_str
 
             # Pre-Break Warning triggers at 8:00 PM (20), 10:00 PM (22), and 11:00 PM (23) IST
             if now.hour in (20, 22, 23) and now.minute == 0:
                 warning_key = f"{current_date_str}-{now.hour}"
                 if last_warning_hour != warning_key:
+                    if auto_sync_and_mark_completed:
+                        try:
+                            auto_sync_and_mark_completed()
+                        except Exception:
+                            pass
                     challenge = get_or_create_today_challenge()
                     if challenge and challenge.get("status") == "pending":
                         fire_streak_warning(force=False)
                     last_warning_hour = warning_key
 
-            # 5-minute Escalation Repeats
+            # 5-minute Escalation Repeats: ONLY IF task is still pending and NOT completed on Unstop
             if now.minute % 5 == 0 and now.second < 15:
+                if auto_sync_and_mark_completed:
+                    try:
+                        auto_sync_and_mark_completed()
+                    except Exception:
+                        pass
                 challenge = get_or_create_today_challenge()
                 if challenge and challenge.get("status") == "pending":
                     reminded_at = challenge.get("reminded_at")
@@ -714,6 +1064,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         now = time.time()
         path = request.url.path
 
+        if client_ip in ("127.0.0.1", "localhost", "::1", "testclient"):
+            return await call_next(request)
+
         with rate_limit_lock:
             # Clean old entries (> 15 min = 900s)
             cutoff = now - 900
@@ -729,7 +1082,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             request_counts[client_ip].append(now)
 
             # 2. Sensitive routes limit: 40 requests per 15 min
-            sensitive_prefixes = ("/api/solve", "/api/test-phone-notify", "/api/test-notify", "/api/challenge/update")
+            sensitive_prefixes = ("/api/solve", "/api/test-phone-notify", "/api/test-notify", "/api/test-complete", "/api/challenge/update")
             if any(path.startswith(p) for p in sensitive_prefixes):
                 sens_history = sensitive_counts.setdefault(client_ip, [])
                 sensitive_counts[client_ip] = [t for t in sens_history if t > cutoff]
@@ -832,11 +1185,85 @@ class ChallengeSetDay(BaseModel):
     @field_validator("status")
     @classmethod
     def validate_status(cls, v: Optional[str]) -> Optional[str]:
-        if v not in ("solved", "pending", "skipped", "untracked", "upcoming"):
+        if v not in ("solved", "pending", "missed", "skipped", "untracked", "upcoming"):
             raise ValueError("Invalid challenge status")
         return v
 
 # ─── API Routes ────────────────────────────────────────────────────────────────
+
+@app.get("/api/streak-details")
+def api_streak_details():
+    evaluate_and_update_missed_days()
+    db = read_db()
+    stats = get_stats()
+    challenges = db.get("challenges", [])
+    settings = db.get("settings", {})
+    user = get_user_profile()
+    today_c = get_or_create_today_challenge()
+    return {
+        "stats": stats,
+        "challenge": today_c,
+        "user": user,
+        "streak_breaks": settings.get("streak_breaks", []),
+        "last_broken_streak": settings.get("last_broken_streak", 0),
+        "last_broken_at": settings.get("last_broken_at"),
+        "total_breaks": settings.get("total_streak_breaks", 0),
+        "missed_challenges": [c for c in challenges if c.get("status") == "missed"]
+    }
+
+@app.post("/api/streak/test-break", dependencies=[Depends(verify_api_key)])
+def api_test_streak_break(day: Optional[int] = None):
+    """Safely test streak break behavior: marks a challenge as missed and records the break."""
+    db = read_db()
+    challenges = db.get("challenges", [])
+    settings = db.setdefault("settings", {})
+
+    target_day = day
+    if not target_day:
+        current = get_or_create_today_challenge()
+        target_day = current.get("day", 1)
+
+    previous_streak = get_streak_unlocked(db)
+    for c in challenges:
+        if c.get("day") == target_day:
+            c["status"] = "missed"
+            c["missed_at"] = datetime.now(IST).isoformat()
+            break
+
+    if previous_streak > 0:
+        breaks = settings.setdefault("streak_breaks", [])
+        break_event = {
+            "id": len(breaks) + 1,
+            "day": target_day,
+            "streak_lost": previous_streak,
+            "broken_at": datetime.now(IST).isoformat(),
+            "reason": f"Manual test streak break for Day {target_day}"
+        }
+        breaks.append(break_event)
+        settings["last_broken_streak"] = previous_streak
+        settings["last_broken_at"] = break_event["broken_at"]
+        settings["last_broken_day"] = target_day
+        settings["total_streak_breaks"] = settings.get("total_streak_breaks", 0) + 1
+        settings["streak_status"] = "broken"
+
+    write_db(db)
+    return {"success": True, "message": f"Streak break tested on Day {target_day}!", "stats": get_stats()}
+
+@app.post("/api/streak/restore", dependencies=[Depends(verify_api_key)])
+def api_restore_streak(day: Optional[int] = None):
+    """Restores a missed challenge back to solved/pending after testing."""
+    db = read_db()
+    challenges = db.get("challenges", [])
+    target_day = day or 11
+    for c in challenges:
+        if c.get("day") == target_day:
+            c["status"] = "solved"
+            c["solved_at"] = datetime.now(IST).isoformat()
+            c["missed_at"] = None
+            break
+    write_db(db)
+    return {"success": True, "message": f"Day {target_day} restored to solved!", "stats": get_stats()}
+
 
 @app.get("/api/health")
 def api_health():
@@ -844,6 +1271,11 @@ def api_health():
 
 @app.get("/api/today")
 def api_today():
+    if auto_sync_and_mark_completed:
+        try:
+            auto_sync_and_mark_completed()
+        except Exception:
+            pass
     challenge = get_or_create_today_challenge()
     stats = get_stats()
     user = get_user_profile()
@@ -858,6 +1290,21 @@ def api_today():
         except Exception:
             pass
     return {"challenge": challenge, "stats": stats, "user": user, "first_open_done": first_open_done}
+
+@app.get("/api/sync")
+@app.post("/api/sync")
+def api_sync():
+    sync_res = {}
+    if auto_sync_and_mark_completed:
+        try:
+            sync_res = auto_sync_and_mark_completed()
+        except Exception as e:
+            sync_res = {"synced": False, "error": str(e)}
+    challenge = get_or_create_today_challenge()
+    stats = get_stats()
+    user = get_user_profile()
+    return {"sync": sync_res, "challenge": challenge, "stats": stats, "user": user}
+
 
 
 @app.get("/api/roadmap")
@@ -891,11 +1338,19 @@ def api_vapid_key():
 def api_solve():
     challenge = get_or_create_today_challenge()
     day = challenge.get("day", 1)
+    title = challenge.get("title", f"Day {day} Challenge")
+    link = challenge.get("link", "https://unstop.com/practice/coding")
     update_challenge_status(day, "solved")
+    stats = get_stats()
+    streak = stats.get("streak", 1)
     print(f"🎉 [Python] Day {day} marked as SOLVED!")
+
+    fire_completion_notification(day, title, streak, link)
+
     return {
         "success": True,
         "day": day,
+        "streak": streak,
         "message": f"Day {day} solved! Outstanding consistency, Animesh! 🎉"
     }
 
@@ -954,6 +1409,17 @@ def api_test_notify():
     fire_reminder(is_repeat=False)
     return {"success": True, "message": "Test notification sent!"}
 
+@app.post("/api/test-complete", dependencies=[Depends(verify_api_key)])
+def api_test_complete():
+    challenge = get_or_create_today_challenge()
+    day = challenge.get("day", 1)
+    title = challenge.get("title", f"Day {day} Challenge")
+    link = challenge.get("link", "https://unstop.com/practice/coding")
+    stats = get_stats()
+    streak = stats.get("streak", 1)
+    fire_completion_notification(day, title, streak, link)
+    return {"success": True, "message": "Completion notification sent!"}
+
 @app.post("/api/test-phone-notify", dependencies=[Depends(verify_api_key)])
 def api_test_phone_notify():
     user = get_user_profile()
@@ -980,11 +1446,17 @@ def api_test_phone_notify():
 @app.post("/api/test-first-open", dependencies=[Depends(verify_api_key)])
 def api_test_first_open():
     notifier_script = BASE_DIR / "unstop_laptop_notifier.py"
-    python_exe = sys.executable.replace("pythonw.exe", "python.exe")
-    cmd = [python_exe, str(notifier_script), "--first-open", "--force"]
-    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
-    subprocess.Popen(cmd, creationflags=creationflags)
-    return {"success": True, "message": "First-in-day laptop open popup triggered!"}
+    pythonw_exe = sys.executable.replace("python.exe", "pythonw.exe")
+    cmd = [pythonw_exe, str(notifier_script), "--first-open", "--force"]
+    startupinfo = None
+    creationflags = 0
+    if sys.platform == "win32":
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 0
+    subprocess.Popen(cmd, creationflags=creationflags, startupinfo=startupinfo)
+    return {"success": True, "message": "Notification triggered silently!"}
 
 
 @app.post("/api/backup", dependencies=[Depends(verify_api_key)])
