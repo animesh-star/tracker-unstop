@@ -26,17 +26,26 @@ try {
 } catch (e) {}
 
 // Auto-migrate from bundled/legacy root if needed
-if (!fs.existsSync(DB_PATH)) {
-  try {
-    if (fs.existsSync(BUNDLED_PATH)) {
-      fs.copyFileSync(BUNDLED_PATH, DB_PATH);
-    } else if (fs.existsSync(LEGACY_PATH)) {
-      fs.copyFileSync(LEGACY_PATH, DB_PATH);
+try {
+  const sourcePath = fs.existsSync(BUNDLED_PATH) ? BUNDLED_PATH : (fs.existsSync(LEGACY_PATH) ? LEGACY_PATH : null);
+  if (sourcePath) {
+    if (!fs.existsSync(DB_PATH)) {
+      fs.copyFileSync(sourcePath, DB_PATH);
+      console.log('📦 Initialized challenges.json for server environment');
+    } else {
+      // If bundled data has more solved challenges than /tmp cache, update /tmp
+      const cached = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+      const bundled = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
+      const cachedSolved = (cached.challenges || []).filter(c => c.status === 'solved').length;
+      const bundledSolved = (bundled.challenges || []).filter(c => c.status === 'solved').length;
+      if (bundledSolved > cachedSolved) {
+        fs.copyFileSync(sourcePath, DB_PATH);
+        console.log('📦 Updated challenges.json with latest bundled solved state');
+      }
     }
-    console.log('📦 Initialized challenges.json for server environment');
-  } catch (err) {
-    console.warn('⚠️ Initialization notice:', err.message);
   }
+} catch (err) {
+  console.warn('⚠️ Initialization notice:', err.message);
 }
 
 // ─── Default DB Structure ──────────────────────────────────────────────────────
@@ -46,7 +55,7 @@ const DEFAULT_USER = {
   email: 'animesh.goswami045@gmail.com',
   profileUrl: 'https://unstop.com/u/animegos31002',
   practiceUrl: 'https://unstop.com/practice/coding',
-  ntfyTopic: 'animesh_unstop_streak_9823',
+  ntfyTopic: 'animesh_unstop_streak',
 };
 
 const DEFAULT_DB = {
