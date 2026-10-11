@@ -148,19 +148,31 @@ def read_db() -> Dict[str, Any]:
             return json.loads(json.dumps(DEFAULT_DB))
 
 def write_db_unlocked(data: Dict[str, Any]) -> None:
-    """Atomic write: write to temp file, then atomic rename."""
-    try:
-        with open(TMP_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        os.replace(TMP_PATH, DB_PATH)
-        if LEGACY_DB_PATH.exists() and LEGACY_DB_PATH != DB_PATH:
-            try:
-                import shutil
-                shutil.copyfile(DB_PATH, LEGACY_DB_PATH)
-            except Exception:
-                pass
-    except Exception as e:
-        print(f"❌ [Python] Atomic write error: {e}")
+    """Atomic write with retry and fallback for Windows/OneDrive file locking."""
+    written = False
+    for attempt in range(5):
+        try:
+            with open(TMP_PATH, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            os.replace(TMP_PATH, DB_PATH)
+            written = True
+            break
+        except Exception:
+            if attempt < 4:
+                time.sleep(0.05 * (attempt + 1))
+    if not written:
+        try:
+            with open(DB_PATH, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            print(f"❌ [Python] Atomic write error: {e}")
+
+    if LEGACY_DB_PATH.exists() and LEGACY_DB_PATH != DB_PATH:
+        try:
+            with open(LEGACY_DB_PATH, "w", encoding="utf-8") as rf:
+                json.dump(data, rf, indent=2)
+        except Exception:
+            pass
 
 def write_db(data: Dict[str, Any]) -> None:
     with db_lock:
@@ -412,7 +424,32 @@ def get_streak_chain_details(db: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     cmap = {c.get("day"): c for c in challenges}
-    today_c = get_or_create_today_challenge()
+    today = today_date_str()
+    # Determine today's challenge directly from passed-in db
+    today_c = None
+    for c in challenges:
+        s_date = (c.get("solved_at") or "").split("T")[0]
+        a_date = c.get("assigned_date") or ""
+        if (s_date == today or a_date == today) and c.get("status") == "solved":
+            today_c = c
+            break
+
+    if not today_c:
+        for c in challenges:
+            if c.get("assigned_date") == today and c.get("status") in ("pending", "upcoming"):
+                today_c = c
+                break
+
+    if not today_c:
+        today_c = next((c for c in challenges if c.get("status") == "pending"), None)
+
+    if not today_c:
+        max_solved = max([c.get("day", 0) for c in challenges if c.get("status") == "solved"], default=0)
+        today_c = cmap.get(min(max_solved + 1, 30))
+
+    if not today_c and challenges:
+        today_c = challenges[0]
+
     today_day = today_c.get("day", 1) if today_c else 1
     today_status = today_c.get("status", "pending") if today_c else "pending"
 

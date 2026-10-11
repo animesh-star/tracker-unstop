@@ -61,9 +61,9 @@
       "day": 6,
       "title": "Day 6: The Conservation Queue",
       "link": "https://unstop.com/code/practice/662451",
-      "status": "pending",
+      "status": "solved",
       "reminded_at": null,
-      "solved_at": null,
+      "solved_at": "2026-10-11T10:32:07.148520+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
       "assigned_date": "2026-10-11",
       "missed_at": null

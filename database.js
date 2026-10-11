@@ -126,17 +126,31 @@ function readDB() {
  * This guarantees zero file corruption during power cuts or unexpected process crashes.
  */
 function writeDB(data) {
-  try {
-    const content = JSON.stringify(data, null, 2);
-    fs.writeFileSync(TMP_PATH, content, 'utf8');
-    fs.renameSync(TMP_PATH, DB_PATH);
-    if (!IS_VERCEL && fs.existsSync(LEGACY_PATH)) {
-      try {
-        fs.writeFileSync(LEGACY_PATH, content, 'utf8');
-      } catch {}
+  const content = JSON.stringify(data, null, 2);
+  let written = false;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      fs.writeFileSync(TMP_PATH, content, 'utf8');
+      fs.renameSync(TMP_PATH, DB_PATH);
+      written = true;
+      break;
+    } catch {
+      // Small busy wait on Windows file locking
+      const start = Date.now();
+      while (Date.now() - start < 40) {}
     }
-  } catch (err) {
-    console.error('❌ Database atomic write failed:', err.message);
+  }
+  if (!written) {
+    try {
+      fs.writeFileSync(DB_PATH, content, 'utf8');
+    } catch (err) {
+      console.error('❌ Database write failed:', err.message);
+    }
+  }
+  if (!IS_VERCEL && fs.existsSync(LEGACY_PATH)) {
+    try {
+      fs.writeFileSync(LEGACY_PATH, content, 'utf8');
+    } catch {}
   }
 }
 
@@ -281,11 +295,25 @@ function calculateAllTimeBestStreak(db) {
 }
 
 function getStreakChainDetails(db) {
-  const current = getOrCreateTodayChallenge();
-  const currentDay = current ? current.day : 1;
+  const today = todayDateStr();
+  const challenges = db.challenges || [];
   const cmap = {};
-  (db.challenges || []).forEach(c => { cmap[c.day] = c; });
+  challenges.forEach(c => { cmap[c.day] = c; });
 
+  let current = challenges.find(c => {
+    const sDate = c.solved_at ? c.solved_at.split('T')[0] : null;
+    return sDate === today && c.status === 'solved';
+  });
+  if (!current) {
+    current = challenges.find(c => c.status === 'pending');
+  }
+  if (!current) {
+    const maxSolved = challenges.reduce((max, c) => (c.status === 'solved' ? Math.max(max, c.day || 0) : max), 0);
+    current = cmap[Math.min(maxSolved + 1, 30)];
+  }
+  if (!current) current = challenges[0] || null;
+
+  const currentDay = current ? current.day : 1;
   const todayStatus = current ? current.status : 'pending';
   const startDay = todayStatus === 'solved' ? currentDay : currentDay - 1;
 

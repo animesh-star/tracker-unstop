@@ -525,7 +525,7 @@ def sync_unstop():
         else:
             print("ℹ️ No Unstop practice activity detected in browser history for today yet.")
 
-        res = auto_sync_and_mark_completed()
+        res = auto_sync_and_mark_completed(mark_solved=True)
         if res.get("synced"):
             print(f"\n🎉 Successfully Synced Directly From Unstop!")
             print(f"   📅 Day:    Day {res.get('day')}")
