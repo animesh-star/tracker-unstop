@@ -47,25 +47,25 @@
     {
       "id": 1789449575903,
       "day": 5,
-      "title": "Day 5: The Conservation Queue",
+      "title": "Day 5: Matrix Manipulation & 2D Grid Traversal",
+      "link": "https://unstop.com/practice/coding",
+      "status": "solved",
+      "reminded_at": null,
+      "solved_at": "2026-10-10T21:30:00.000000+05:30",
+      "created_at": "2026-09-15T05:19:35.900Z",
+      "assigned_date": "2026-10-10",
+      "missed_at": null
+    },
+    {
+      "id": 1789449575904,
+      "day": 6,
+      "title": "Day 6: The Conservation Queue",
       "link": "https://unstop.com/code/practice/662451",
       "status": "pending",
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-09-15T05:19:35.900Z",
       "assigned_date": "2026-10-11",
-      "missed_at": null
-    },
-    {
-      "id": 1789449575904,
-      "day": 6,
-      "title": "Day 6: Stack Operations & Valid Parentheses",
-      "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
-      "created_at": "2026-09-15T05:19:35.900Z",
-      "assigned_date": null,
       "missed_at": null
     },
     {
