@@ -43,6 +43,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadData();
   updateNextReminderTime();
   setInterval(updateNextReminderTime, 60_000);
+  // Auto-sync polling every 12 seconds for seamless live tracking
+  setInterval(() => loadData(true), 12_000);
 });
 
 // ─── Service Worker Registration ──────────────────────────────────────────────
@@ -151,7 +153,7 @@ async function disableNotifications() {
 }
 
 // ─── Load Data ─────────────────────────────────────────────────────────────────
-async function loadData() {
+async function loadData(silent = false) {
   try {
     const [todayRes, historyRes] = await Promise.all([
       fetch(`${API_BASE}/api/today`),
@@ -170,6 +172,13 @@ async function loadData() {
     renderPathGrid(challenges, challenge);
     renderHistory(challenges);
 
+    const liveBadge = document.getElementById('live-sync-badge');
+    const liveLabel = document.getElementById('live-sync-label');
+    if (liveBadge) {
+      liveBadge.className = 'notif-badge notif-on';
+      if (liveLabel) liveLabel.textContent = 'Live Sync: Active';
+    }
+
     // Show modal if pending after midnight
     if (challenge && challenge.status === 'pending' && challenge.reminded_at) {
       const remDate = new Date(challenge.reminded_at);
@@ -183,7 +192,15 @@ async function loadData() {
     }
   } catch (err) {
     console.error('[App] Load data error:', err);
-    showToast('❌ Could not connect to server. Is it running?', 'error');
+    const liveBadge = document.getElementById('live-sync-badge');
+    const liveLabel = document.getElementById('live-sync-label');
+    if (liveBadge) {
+      liveBadge.className = 'notif-badge notif-off';
+      if (liveLabel) liveLabel.textContent = 'Live Sync: Reconnecting...';
+    }
+    if (!silent) {
+      showToast('❌ Could not connect to server. Is it running?', 'error');
+    }
   }
 }
 

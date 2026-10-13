@@ -14,8 +14,13 @@ try {
     [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
 } catch {}
 
-# Verified Windows AppUserModelId for guaranteed delivery
-$appId = "{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe"
+# Preferred AppUserModelId: Use Unstop Challenge Tracker shortcut if available to avoid showing 'Windows PowerShell'
+$shortcutPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Unstop Challenge Tracker.lnk"
+if (Test-Path $shortcutPath) {
+    $appId = $shortcutPath
+} else {
+    $appId = "{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe"
+}
 
 # Clear previous notifications to avoid clutter
 try {

@@ -215,15 +215,15 @@ def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved:
         if not challenges:
             return {"synced": False, "reason": "No challenges in database"}
 
-        # Find today's challenge:
+        # Find today's challenge by matching URL, assigned_date, or pending state:
+        url_match = next((c for c in challenges if c.get("link") and c.get("link") == activity.get("url")), None)
+        date_match = next((c for c in challenges if c.get("assigned_date") == target_date), None)
         today_solved = next((c for c in challenges if (c.get("solved_at") or "").split("T")[0] == target_date and c.get("status") == "solved"), None)
         pending = next((c for c in challenges if c.get("status") in ("pending", "upcoming") and (not c.get("assigned_date") or c.get("assigned_date") <= target_date)), None)
         if not pending:
             pending = next((c for c in challenges if c.get("status") in ("pending", "upcoming")), None)
 
-        target_challenge = today_solved or pending
-        if not target_challenge:
-            target_challenge = challenges[-1]
+        target_challenge = url_match or date_match or today_solved or pending or challenges[-1]
 
         day = target_challenge.get("day", 1)
         was_already_solved = (target_challenge.get("status") == "solved")
@@ -297,6 +297,12 @@ def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved:
         if newly_solved:
             send_completion_notification(day, new_title, streak, activity.get("url"))
 
+        # Automatically push update to live website in background thread
+        try:
+            threading.Thread(target=sync_to_cloud, daemon=True).start()
+        except Exception:
+            pass
+
         return {
             "synced": True,
             "day": day,
@@ -313,6 +319,35 @@ def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved:
 
     except Exception as ex:
         return {"synced": False, "error": str(ex)}
+
+def sync_to_cloud(force: bool = False) -> bool:
+    """Pushes local challenges & settings directly to https://unstop-gold.vercel.app/api/cloud-sync"""
+    cloud_url = os.getenv("CLOUD_SYNC_URL", "https://unstop-gold.vercel.app/api/cloud-sync")
+    api_secret = os.getenv("API_SECRET", "animesh_secure_unstop_key_2026")
+    try:
+        if not DB_PATH.exists():
+            return False
+        with open(DB_PATH, "r", encoding="utf-8") as f:
+            db = json.load(f)
+        payload = {
+            "challenges": db.get("challenges", []),
+            "settings": db.get("settings", {}),
+            "timestamp": datetime.now(IST).isoformat()
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": api_secret
+        }
+        res = requests.post(cloud_url, json=payload, headers=headers, timeout=10)
+        if res.status_code == 200:
+            print(f"☁️ [Cloud Sync] Live tracking successfully synced to {cloud_url}!")
+            return True
+        else:
+            print(f"⚠️ [Cloud Sync] Cloud responded with status {res.status_code}: {res.text[:100]}")
+            return False
+    except Exception as e:
+        print(f"⚠️ [Cloud Sync] Notice: {e}")
+        return False
 
 if __name__ == "__main__":
     print("🔍 Testing Unstop Browser Activity Fetcher...")

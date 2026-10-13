@@ -1,8 +1,8 @@
-/* ─── Reset & Base ──────────────────────────────────────────────────────────── */
+afterin/* ─── Reset & Base ──────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #070a13;
+  --bg: #051440;
   --surface: #0e1320;
   --surface-2: #161c2e;
   --surface-3: #1f273d;

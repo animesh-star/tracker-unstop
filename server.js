@@ -318,27 +318,10 @@ cron.schedule(
   { timezone: 'Asia/Kolkata' }
 );
 
-cron.schedule(
-  '*/5 * * * *',
-  async () => {
-    const challenge = db.getOrCreateTodayChallenge();
-    if (!challenge) return;
-
-    if (challenge.status === 'pending') {
-      const remindedAt = challenge.reminded_at;
-      if (!remindedAt) return;
-
-      const remindedDate = new Date(remindedAt).toDateString();
-      const todayDate = new Date().toDateString();
-
-      if (remindedDate === todayDate) {
-        console.log(`🔁 Challenge Day ${challenge.day} unsolved — repeating reminder...`);
-        await fireReminder(true);
-      }
-    }
-  },
-  { timezone: 'Asia/Kolkata' }
-);
+// Note: 5-minute repeat notifications disabled to enforce strict policy:
+// Notification will ONLY push once upon opening the laptop lid if the task is not completed.
+// Repeat spamming while laptop is open is suppressed.
+// cron.schedule('*/5 * * * *', async () => { ... });
 
 console.log('⏰ Secure cron jobs scheduled (IST timezone)');
 
@@ -451,6 +434,27 @@ app.post('/api/solve', sensitiveActionLimiter, requireAuth, async (req, res) => 
   } catch (err) {
     console.error('❌ Solve endpoint error:', err);
     res.status(500).json({ error: err.message || 'Could not mark solved' });
+  }
+});
+
+app.post('/api/cloud-sync', sensitiveActionLimiter, requireAuth, (req, res) => {
+  try {
+    const synced = db.syncDatabase(req.body);
+    if (!synced) {
+      return res.status(400).json({ error: 'Invalid sync payload' });
+    }
+    const today = db.getOrCreateTodayChallenge();
+    const stats = db.getStats();
+    res.json({
+      success: true,
+      message: 'Cloud sync successful',
+      stats,
+      challenge: today,
+      synced_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('❌ Cloud sync error:', err);
+    res.status(500).json({ error: err.message || 'Failed to sync with cloud' });
   }
 });
 

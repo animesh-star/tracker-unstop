@@ -591,6 +591,39 @@ function setChallengeDay(day, data) {
   return c;
 }
 
+function syncDatabase(incoming) {
+  if (!incoming || !incoming.challenges || !Array.isArray(incoming.challenges)) return null;
+  const db = readDB();
+  const cmap = {};
+  (db.challenges || []).forEach(c => { cmap[c.day] = c; });
+
+  for (const c of incoming.challenges) {
+    if (!c.day) continue;
+    const existing = cmap[c.day];
+    if (!existing) {
+      db.challenges.push(c);
+      cmap[c.day] = c;
+    } else {
+      if (c.status === 'solved' || existing.status !== 'solved') {
+        existing.status = c.status;
+        if (c.solved_at) existing.solved_at = c.solved_at;
+      }
+      if (c.link) existing.link = sanitizeUrl(c.link) || existing.link;
+      if (c.title) existing.title = sanitizeText(c.title, 150) || existing.title;
+      if (c.assigned_date) existing.assigned_date = c.assigned_date;
+      if (c.missed_at !== undefined) existing.missed_at = c.missed_at;
+    }
+  }
+
+  if (incoming.settings && typeof incoming.settings === 'object') {
+    db.settings = { ...db.settings, ...incoming.settings };
+  }
+
+  writeDB(db);
+  evaluateAndUpdateMissedDays();
+  return db;
+}
+
 module.exports = {
   getTodayChallenge,
   getOrCreateTodayChallenge,
@@ -600,6 +633,7 @@ module.exports = {
   getAllChallenges,
   get30DayRoadmap,
   setChallengeDay,
+  syncDatabase,
   getStats,
   getStreak,
   saveSubscription,

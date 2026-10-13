@@ -53,10 +53,11 @@ except Exception:
     pass
 
 try:
-    from unstop_sync import auto_sync_and_mark_completed, fetch_unstop_activity_for_date
+    from unstop_sync import auto_sync_and_mark_completed, fetch_unstop_activity_for_date, sync_to_cloud
 except ImportError:
     auto_sync_and_mark_completed = None
     fetch_unstop_activity_for_date = None
+    sync_to_cloud = None
 
 # ─── Configuration & Directories ───────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
@@ -1019,6 +1020,11 @@ def scheduler_loop():
                         sync_res = auto_sync_and_mark_completed()
                         if sync_res.get("synced") and sync_res.get("newly_solved"):
                             print(f"🎉 [Python Scheduler] Detected completed challenge on Unstop! '{sync_res.get('title')}' auto-marked as SOLVED.")
+                            if sync_to_cloud:
+                                sync_to_cloud()
+                        elif sync_to_cloud and (now_ts % 120 < 25):
+                            # Periodic heartbeat push every ~2 minutes
+                            sync_to_cloud()
                     except Exception as e:
                         pass
 
@@ -1440,6 +1446,42 @@ def api_set_day(payload: ChallengeSetDay):
 def api_set_user(payload: Dict[str, Any]):
     updated = set_user_profile(payload)
     return {"success": True, "user": updated}
+
+@app.post("/api/cloud-sync", dependencies=[Depends(verify_api_key)])
+def api_cloud_sync(payload: Dict[str, Any]):
+    incoming_challenges = payload.get("challenges", [])
+    if not incoming_challenges:
+        raise HTTPException(status_code=400, detail="Invalid sync payload")
+    db = read_db()
+    cmap = {c.get("day"): c for c in db.get("challenges", [])}
+    for c in incoming_challenges:
+        d = c.get("day")
+        if not d:
+            continue
+        existing = cmap.get(d)
+        if not existing:
+            db.setdefault("challenges", []).append(c)
+            cmap[d] = c
+        else:
+            if c.get("status") == "solved" or existing.get("status") != "solved":
+                existing["status"] = c.get("status")
+                if c.get("solved_at"):
+                    existing["solved_at"] = c.get("solved_at")
+            if c.get("link"):
+                existing["link"] = sanitize_url(c.get("link")) or existing.get("link")
+            if c.get("title"):
+                existing["title"] = sanitize_text(c.get("title"), 150) or existing.get("title")
+            if c.get("assigned_date"):
+                existing["assigned_date"] = c.get("assigned_date")
+            if c.get("missed_at") is not None:
+                existing["missed_at"] = c.get("missed_at")
+
+    if payload.get("settings"):
+        db.setdefault("settings", {}).update(payload.get("settings"))
+
+    write_db(db)
+    evaluate_and_update_missed_days()
+    return {"success": True, "message": "Synced successfully", "stats": get_stats(), "challenge": get_or_create_today_challenge()}
 
 @app.post("/api/subscribe")
 def api_subscribe(sub: Dict[str, Any]):

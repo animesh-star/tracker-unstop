@@ -71,25 +71,25 @@
     {
       "id": 1789449575905,
       "day": 7,
-      "title": "Day 7: Dev's Momentum Ledger",
-      "link": "https://unstop.com/code/practice/661020",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
+      "title": "Day 7: Static on the Canopy Line",
+      "link": "https://unstop.com/code/practice/662950",
+      "status": "solved",
+      "reminded_at": "2026-10-12T00:00:15.691181+05:30",
+      "solved_at": "2026-10-12T05:47:29.244366+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
-      "assigned_date": null,
+      "assigned_date": "2026-10-12",
       "missed_at": null
     },
     {
       "id": 1789449575906,
       "day": 8,
-      "title": "Day 8: The Ward Priority Desk",
-      "link": "https://unstop.com/code/practice/661268",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
+      "title": "Day 8: Reachable Wards",
+      "link": "https://unstop.com/code/practice/662452",
+      "status": "solved",
+      "reminded_at": "2026-10-13T00:00:20.993794+05:30",
+      "solved_at": "2026-10-13T22:40:36.552386+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
-      "assigned_date": null,
+      "assigned_date": "2026-10-13",
       "missed_at": null
     },
     {
@@ -101,7 +101,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-09-15T05:19:35.900Z",
-      "assigned_date": null,
+      "assigned_date": "2026-10-14",
       "missed_at": null
     },
     {
@@ -436,11 +436,19 @@
     "vapid_private": "vwbhT59yt85TIgT8UGqAQIdJevuVioGk-L0YTMPdykc",
     "best_streak": 16,
     "notify_on_complete": false,
-    "streak_breaks": [],
-    "last_broken_streak": 0,
-    "last_broken_at": null,
-    "last_broken_day": null,
-    "total_streak_breaks": 0,
-    "streak_status": "active"
+    "streak_breaks": [
+      {
+        "id": 1,
+        "day": 7,
+        "streak_lost": 6,
+        "broken_at": "2026-10-13T00:00:02.481755+05:30",
+        "reason": "Day 7 missed at midnight deadline (2026-10-12)"
+      }
+    ],
+    "last_broken_streak": 6,
+    "last_broken_at": "2026-10-13T00:00:02.481755+05:30",
+    "last_broken_day": 7,
+    "total_streak_breaks": 1,
+    "streak_status": "broken"
   }
 }

@@ -78,6 +78,34 @@ def is_workstation_locked() -> bool:
     except Exception:
         return False
 
+DAEMON_LOCK_FILE = DATA_DIR / "notifier_daemon.pid"
+
+def acquire_daemon_lock() -> bool:
+    """Ensures only a single background notifier daemon instance runs at any time."""
+    if DAEMON_LOCK_FILE.exists():
+        try:
+            with open(DAEMON_LOCK_FILE, "r", encoding="utf-8") as f:
+                old_pid = int(f.read().strip())
+            if old_pid != os.getpid():
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, old_pid)
+                if handle:
+                    kernel32.CloseHandle(handle)
+                    print(f"ℹ️ [Notifier Daemon] Already active in background (PID {old_pid}). Exiting duplicate.")
+                    return False
+        except Exception:
+            pass
+
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with open(DAEMON_LOCK_FILE, "w", encoding="utf-8") as f:
+            f.write(str(os.getpid()))
+        return True
+    except Exception:
+        return True
+
 def is_popup_window_open() -> bool:
     """Checks whether the GUI popup window is already active on screen."""
     lock_file = DATA_DIR / "popup_open.lock"
@@ -504,7 +532,7 @@ def send_laptop_toast(title: str, body: str, link: str, subtext: str = "", force
     global _last_toast_time
     now = time.time()
     with _toast_lock:
-        if not force and (now - _last_toast_time) < 5:
+        if not force and (now - _last_toast_time) < 30:
             return False
         _last_toast_time = now
 
@@ -884,6 +912,20 @@ def show_gui_popup(
         def poll_auto_solved():
             if not lock_file.exists():
                 return
+            if is_today_completed():
+                try:
+                    day_lbl.config(text=f"✅ {title} [SOLVED]", fg="#10b981")
+                    desc_lbl.config(text="🎉 Task completed! Marked as SOLVED. Closing alert now...", fg="#a7f3d0")
+                    for widget in btn_row.winfo_children():
+                        widget.pack_forget()
+                    auto_badge = tk.Label(btn_row, text="✨ TASK COMPLETED • SOLVED!", font=("Segoe UI", 9, "bold"), fg="#10b981", bg="#131a2e")
+                    auto_badge.pack(side="left", pady=4)
+                    root.after(1500, close_win)
+                    return
+                except Exception:
+                    close_win()
+                    return
+
             if auto_sync_and_mark_completed:
                 try:
                     sync_res = auto_sync_and_mark_completed()
@@ -917,11 +959,35 @@ def show_gui_popup(
         except Exception:
             pass
 
+def send_phone_push(title: str, body: str, link: str) -> bool:
+    """Delivers push notification directly to ntfy.sh topic."""
+    topic = NTFY_TOPIC or "animesh_unstop_streak"
+    clean_title = "".join(ch for ch in title if 32 <= ord(ch) < 127).strip() or "Unstop Challenge Alert"
+    safe_link = link or "https://unstop.com/practice/coding"
+    headers = {
+        "Title": clean_title,
+        "Priority": "5",
+        "Tags": "fire,muscle,bell",
+        "Click": safe_link,
+        "Actions": f"view, Open Challenge, {safe_link}",
+    }
+    try:
+        res = requests.post(f"https://ntfy.sh/{topic}", data=body.encode("utf-8"), headers=headers, timeout=10)
+        if res.status_code == 200:
+            print(f"📱 [ntfy] Phone notification delivered to https://ntfy.sh/{topic}")
+            return True
+        else:
+            print(f"⚠️ [ntfy] returned status: {res.status_code}")
+            return False
+    except Exception as e:
+        print(f"❌ [ntfy] Failed to send push: {e}")
+        return False
+
 def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") -> bool:
     """
     Called whenever the laptop is opened, unlocked, or woken from sleep.
     If today's challenge is not yet completed, directly pops up the desktop alert card
-    and delivers the Windows notification banner.
+    and delivers the Windows notification banner and ntfy.sh phone push.
     """
     allowed, notif_reason = is_notification_allowed(force=force)
     if not allowed and not force:
@@ -929,15 +995,6 @@ def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") 
         return False
 
     today = today_date_str()
-
-    # Step 1: Auto-fetch & sync from browser history FIRST
-    if auto_sync_and_mark_completed:
-        try:
-            sync_res = auto_sync_and_mark_completed()
-            if sync_res.get("synced") and sync_res.get("newly_solved"):
-                print(f"🎉 [Auto-Sync] Detected completion on Unstop! '{sync_res.get('title')}' auto-marked as SOLVED.")
-        except Exception:
-            pass
 
     state = load_notifier_state()
     now_ts = time.time()
@@ -948,10 +1005,17 @@ def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") 
         print(f"⏰ [Laptop Open Check] Snoozed ({remaining}s remaining). Skipping popup.")
         return False
 
-    # 2. Debounce cooldown (8 seconds) to prevent duplicate overlapping windows from same lid open
+    # 2. Strict Cooldown: Only notify ONCE per laptop opening, with a minimum 15-minute cooldown
+    COOLDOWN_SECONDS = 900  # 15 minutes cooldown to completely stop notification spam
     last_popup_time = state.get("last_popup_time", 0)
-    if not force and (now_ts - last_popup_time) < 8:
-        print(f"⏳ [Laptop Open Check] Debounced ({int(now_ts - last_popup_time)}s ago). Skipping duplicate.")
+    if not force and (now_ts - last_popup_time) < COOLDOWN_SECONDS:
+        elapsed = int(now_ts - last_popup_time)
+        print(f"⏳ [Laptop Open Alert] Notification suppressed – still within 15-min cooldown ({elapsed}s / {COOLDOWN_SECONDS}s elapsed).")
+        return False
+
+    # 3. Check if desktop card popup is already open on screen
+    if not force and is_popup_window_open():
+        print("ℹ️ [Laptop Open Check] Alert popup is already active on screen.")
         return False
 
     data = get_today_status()
@@ -982,7 +1046,7 @@ def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") 
         return False
 
     is_first_open = (state.get("last_first_open_date") != today)
-    print(f"☀️ [Laptop Open Alert] Laptop opened ({reason})! Day {day} is NOT completed. Directly popping up notification!")
+    print(f"☀️ [Laptop Open Alert] Laptop opened ({reason})! Day {day} is NOT completed. Directly pushing notification!")
 
     state["last_first_open_date"] = today
     state["last_popup_time"] = now_ts
@@ -1040,6 +1104,9 @@ def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") 
     # 2. Push native Windows Toast notification
     send_laptop_toast(toast_title, toast_body, link, subtext=toast_subtext, force=force)
 
+    # 3. Push to phone/browser via ntfy.sh
+    send_phone_push(toast_title, toast_body, link)
+
     return True
 
 # Alias for backwards compatibility
@@ -1067,6 +1134,16 @@ def ntfy_stream_listener():
         except Exception:
             time.sleep(10)
 
+def background_auto_sync_loop():
+    """Independent background auto-sync thread so browser history queries never block the wake timer."""
+    while True:
+        try:
+            time.sleep(60)
+            if auto_sync_and_mark_completed:
+                auto_sync_and_mark_completed()
+        except Exception:
+            time.sleep(15)
+
 def periodic_wake_checker():
     """
     Actively monitors laptop lid open / wake events.
@@ -1076,66 +1153,62 @@ def periodic_wake_checker():
     3. If today's task IS completed, notification is completely SUPPRESSED (zero popups/toasts).
     4. While the laptop remains open and in use, NO repeat notifications or periodic timers will pop up.
     """
+    # Start auto-sync on independent background daemon thread
+    threading.Thread(target=background_auto_sync_loop, daemon=True).start()
+
     last_tick = time.time()
-    last_sync_time = 0
-    was_locked = is_workstation_locked()
     lid_open_pending = False
 
     print("👀 [Lid Monitor] Active: Monitoring laptop lid open events...")
 
     while True:
         try:
-            time.sleep(0.5)
+            time.sleep(1.0)
             now = time.time()
             elapsed_since_tick = now - last_tick
             last_tick = now
 
-            # Background Auto-Sync: Check browser history every 15 seconds to ensure solved state is fresh
-            if now - last_sync_time >= 15:
-                last_sync_time = now
-                if auto_sync_and_mark_completed:
-                    try:
-                        sync_res = auto_sync_and_mark_completed()
-                        if sync_res.get("synced") and sync_res.get("newly_solved"):
-                            print(f"🎉 [Auto-Sync Background] Detected completed challenge on Unstop! '{sync_res.get('title')}' auto-marked as SOLVED.")
-                    except Exception:
-                        pass
-
             # Detect System Wake / Lid Open:
             # When the laptop lid is closed, Windows enters Modern Standby or Sleep.
-            # While suspended, the 0.5s sleep freezes.
-            # Upon opening the laptop lid, elapsed_since_tick jumps (> 2.0s).
-            is_system_wake = (elapsed_since_tick > 2.0)
+            # While suspended, time.sleep(1.0) freezes.
+            # Upon opening the laptop lid, elapsed_since_tick jumps (>= 15.0s).
+            is_system_wake = (elapsed_since_tick >= 15.0)
 
             if is_system_wake:
                 print(f"💻 [Lid Open Event] Laptop lid opened / woke from sleep (suspended ~{int(elapsed_since_tick)}s).")
                 lid_open_pending = True
 
-            # Track workstation lock status & unlock transitions
-            now_locked = is_workstation_locked()
-            is_unlock_event = (was_locked and not now_locked)
-            was_locked = now_locked
+            # When laptop lid is opened:
+            # Wait until workstation is NOT locked (user has unlocked and is at the desktop)
+            if lid_open_pending:
+                if is_workstation_locked():
+                    # Still on Windows lock screen, wait until user unlocks
+                    continue
 
-            if is_unlock_event:
-                print("🔓 [Unlock Event] Workstation unlocked by user! Laptop is active.")
-                lid_open_pending = True
+                # User is active on the desktop! Clear pending immediately so it fires ONLY ONCE
+                lid_open_pending = False
+                time.sleep(1.0)  # Brief pause for desktop shell to stabilize
 
-            # When laptop lid is opened or workstation unlocked:
-            # Wait until workstation is NOT locked (user is actively at the desktop)
-            if lid_open_pending and not now_locked:
-                time.sleep(0.5)  # Brief pause for desktop shell to stabilize
+                # Immediate check/sync from browser history so completed tasks are instantly recognized
+                if auto_sync_and_mark_completed:
+                    try:
+                        auto_sync_and_mark_completed()
+                    except Exception:
+                        pass
+
                 allowed, reason = is_notification_allowed(force=False)
                 if not allowed:
                     print(f"🔕 [Lid Open Check] Challenge already completed / suppressed: {reason}")
                 else:
-                    print("🔔 [Lid Open Check] Today's task is NOT completed! Popping up reminder once...")
-                    trigger_laptop_open_alert(force=False, reason="Laptop Lid Opened / Screen Unlocked")
+                    print("🔔 [Lid Open Check] Today's task is NOT completed! Pushing reminder once upon opening lid...")
+                    trigger_laptop_open_alert(force=False, reason="Laptop Lid Opened")
 
-                # Once popped up, clear pending flag so it does NOT fire again while laptop remains open
-                lid_open_pending = False
+                # Reset last_tick so the duration of showing the alert is NEVER counted as system sleep
+                last_tick = time.time()
 
         except Exception as e:
             time.sleep(5)
+            last_tick = time.time()
 
 def install_startup():
     """Configures automatic launch on Windows login / laptop open."""
@@ -1321,6 +1394,10 @@ if __name__ == "__main__":
     elif "--check" in args:
         trigger_laptop_open_alert(force=False, reason="Command line check")
         time.sleep(10)
+        sys.exit(0)
+
+    # Ensure only one instance of the background daemon runs
+    if not acquire_daemon_lock():
         sys.exit(0)
 
     print("🚀 [Laptop Notifier] Starting Unstop Laptop Home Screen Notifier...")

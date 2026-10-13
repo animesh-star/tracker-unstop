@@ -16,6 +16,7 @@ profile_dump.html
 data/notifier_state.json
 data/*.tmp
 data/*.lock
+data/*.pid
 *.lock
 
 
