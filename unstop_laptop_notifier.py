@@ -53,10 +53,11 @@ if ENV_FILE.exists():
 IST = timezone(timedelta(hours=5, minutes=30))
 
 try:
-    from unstop_sync import auto_sync_and_mark_completed, fetch_unstop_activity_for_date
+    from unstop_sync import auto_sync_and_mark_completed, fetch_unstop_activity_for_date, fetch_today_task_from_vercel
 except ImportError:
     auto_sync_and_mark_completed = None
     fetch_unstop_activity_for_date = None
+    fetch_today_task_from_vercel = None
 
 popup_active = False
 popup_lock = threading.Lock()
@@ -127,6 +128,29 @@ def is_popup_window_open() -> bool:
     except Exception:
         return False
 
+def close_all_popups():
+    """Closes and terminates any active desktop popup cards."""
+    lock_file = DATA_DIR / "popup_open.lock"
+    try:
+        if lock_file.exists():
+            with open(lock_file, "r", encoding="utf-8") as f:
+                pid = int(f.read().strip())
+            lock_file.unlink(missing_ok=True)
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(1, False, pid)  # PROCESS_TERMINATE
+            if handle:
+                kernel32.TerminateProcess(handle, 0)
+                kernel32.CloseHandle(handle)
+    except Exception:
+        pass
+
+    try:
+        ps_cmd = 'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*unstop_laptop_notifier.py*--popup-data*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }'
+        subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=0x08000000)
+    except Exception:
+        pass
+
 def get_chrome_path() -> str:
     """Finds Google Chrome executable path on Windows."""
     candidates = [
@@ -160,23 +184,52 @@ def get_chrome_path() -> str:
 
     return ""
 
+def save_db(db: dict) -> None:
+    """Safely saves DB to both data/challenges.json and root challenges.json with atomic replace."""
+    content = json.dumps(db, indent=2)
+    for p in (DATA_DIR / "challenges.json", BASE_DIR / "challenges.json"):
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            tmp_p = p.with_suffix(".tmp")
+            with open(tmp_p, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.replace(tmp_p, p)
+        except Exception:
+            try:
+                with open(p, "w", encoding="utf-8") as f:
+                    f.write(content)
+            except Exception:
+                pass
+
 def open_url_in_chrome(url: str):
     """
     Directly opens the given URL in Google Chrome specifically for this task,
     without changing the user's system-wide default browser.
     """
     target_url = url or "https://unstop.com/practice/coding"
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(target_url)
+        if parsed.scheme not in ("http", "https"):
+            target_url = "https://unstop.com/practice/coding"
+    except Exception:
+        target_url = "https://unstop.com/practice/coding"
+
     chrome_path = get_chrome_path()
 
-    # Method 1: Windows shell start with direct chrome path (detached, brings window to front)
+    # Method 1: Direct subprocess invocation with Chrome path
     if chrome_path and os.path.isfile(chrome_path):
         try:
-            cmd = f'start "" "{chrome_path}" "{target_url}"'
-            subprocess.Popen(cmd, shell=True)
+            subprocess.Popen([chrome_path, target_url], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
             print(f"🚀 [Chrome Launcher] Launched via path: {chrome_path}")
             return True
-        except Exception as e:
-            print(f"Error launching via chrome path: {e}")
+        except Exception:
+            try:
+                cmd = f'start "" "{chrome_path}" "{target_url}"'
+                subprocess.Popen(cmd, shell=True)
+                return True
+            except Exception as e:
+                print(f"Error launching via chrome path: {e}")
 
     # Method 2: Windows shell start with registered chrome command
     try:
@@ -187,15 +240,7 @@ def open_url_in_chrome(url: str):
     except Exception as e:
         print(f"Error launching via start chrome: {e}")
 
-    # Method 3: Direct subprocess invocation with DETACHED flags
-    if chrome_path and os.path.isfile(chrome_path):
-        try:
-            subprocess.Popen([chrome_path, target_url], creationflags=0x00000008 | 0x00000200)
-            return True
-        except Exception:
-            pass
-
-    # Method 4: Fallback to webbrowser
+    # Method 3: Fallback to webbrowser
     try:
         webbrowser.open(target_url)
         return True
@@ -241,6 +286,13 @@ def get_today_status() -> dict:
         except Exception:
             pass
 
+    # Sync latest problem details from Vercel live website
+    if fetch_today_task_from_vercel:
+        try:
+            fetch_today_task_from_vercel()
+        except Exception:
+            pass
+
     data = None
     try:
         res = requests.get("http://localhost:3000/api/today", timeout=2)
@@ -254,7 +306,6 @@ def get_today_status() -> dict:
         s = data.get("stats", {})
         u = data.get("user", {})
 
-        cur_day = c.get("day", 1)
         cur_day = c.get("day", 1)
         remaining_days = max(1, 30 - cur_day + 1)
         remaining_range = f"Day {cur_day} to 30"
@@ -409,13 +460,79 @@ def get_today_status() -> dict:
         "user": {"name": "Animesh Goswami"}
     }
 
+def ensure_today_challenge_activated() -> dict:
+    """
+    Guarantees today's challenge is assigned and pending if not yet completed.
+    If previous days expired without being solved, marks them missed.
+    """
+    today = today_date_str()
+    target_path = DATA_DIR / "challenges.json"
+    if not target_path.exists():
+        target_path = BASE_DIR / "challenges.json"
+    if not target_path.exists():
+        return {}
+
+    try:
+        with open(target_path, "r", encoding="utf-8") as f:
+            db = json.load(f)
+    except Exception as e:
+        print(f"Error reading DB in ensure_today_challenge_activated: {e}")
+        return {}
+
+    challenges = db.get("challenges", [])
+    changed = False
+
+    # Check if already solved today
+    for c in challenges:
+        s_date = (c.get("solved_at") or "").split("T")[0]
+        a_date = c.get("assigned_date") or ""
+        if (s_date == today or a_date == today) and c.get("status") == "solved":
+            return c
+
+    # Check if active challenge assigned for today exists
+    today_c = next((c for c in challenges if c.get("assigned_date") == today), None)
+    if today_c:
+        if today_c.get("status") == "upcoming":
+            today_c["status"] = "pending"
+            changed = True
+        if changed:
+            save_db(db)
+        return today_c
+
+    # Mark expired past challenges as missed
+    for c in challenges:
+        a_date = c.get("assigned_date")
+        st = c.get("status")
+        if a_date and a_date < today and st in ("pending", "untracked"):
+            c["status"] = "missed"
+            c["missed_at"] = c.get("missed_at") or datetime.now(IST).isoformat()
+            changed = True
+
+    # Find next sequential challenge to activate for today
+    max_day = 0
+    for c in challenges:
+        if c.get("status") in ("solved", "missed"):
+            if c.get("day", 0) > max_day:
+                max_day = c.get("day", 0)
+
+    next_day = min(max_day + 1, 30)
+    next_c = next((c for c in challenges if c.get("day") == next_day), None)
+    if next_c and next_c.get("status") != "solved":
+        next_c["status"] = "pending"
+        next_c["assigned_date"] = today
+        changed = True
+
+    if changed:
+        save_db(db)
+
+    return next_c or (challenges[0] if challenges else {})
+
 def is_today_completed() -> bool:
     """
     Returns True ONLY if today's challenge is confirmed completed / solved.
     If today's challenge is pending, returns False so reminders fire properly.
     """
     today = today_date_str()
-    # Check database
     for path in (DB_PATH, BASE_DIR / "challenges.json"):
         if path.exists():
             try:
@@ -423,18 +540,24 @@ def is_today_completed() -> bool:
                     db = json.load(f)
                 challenges = db.get("challenges", [])
 
-                # 1. First check if any challenge was solved today
-                for c in challenges:
-                    if c.get("status") == "solved":
-                        solved_date = (c.get("solved_at") or "").split("T")[0]
-                        assigned_date = c.get("assigned_date") or ""
-                        if solved_date == today or assigned_date == today:
-                            return True
+                # 1. Check if any challenge was solved today
+                solved_today = any(
+                    c.get("status") == "solved" and (c.get("solved_at") or "").split("T")[0] == today
+                    for c in challenges
+                )
+                if solved_today:
+                    return True
 
-                # 2. Check if today has a pending challenge
-                today_pending = next((c for c in challenges if c.get("status") == "pending" or (c.get("assigned_date") == today and c.get("status") != "solved")), None)
-                if today_pending:
-                    return False
+                # 2. Check if today's assigned challenge exists and is solved
+                today_challenge = next((c for c in challenges if c.get("assigned_date") == today), None)
+                if today_challenge:
+                    return today_challenge.get("status") == "solved"
+
+                # 3. Check if all 30 challenges are solved
+                if challenges and all(c.get("status") == "solved" for c in challenges):
+                    return True
+
+                return False
             except Exception:
                 pass
 
@@ -443,9 +566,9 @@ def is_today_completed() -> bool:
 def is_notification_allowed(force: bool = False) -> tuple:
     """
     Strict Notification Policy:
-    1. Notification will ONLY pop up on and after 00:00 (midnight IST).
-    2. After completing today's challenge, it does NOT show ANY notification.
-    3. Before time (before 00:00 of the active challenge day), NO notification will show.
+    1. If today's challenge is completed, ZERO notification will show at anytime of day or night.
+    2. Notification is allowed on and after 00:00 (midnight IST) if today's challenge is not completed.
+    3. Future challenges scheduled for a future date (> today) are suppressed.
     """
     if force:
         return True, "Force flag enabled."
@@ -453,11 +576,17 @@ def is_notification_allowed(force: bool = False) -> tuple:
     now = datetime.now(IST)
     today = now.strftime("%Y-%m-%d")
 
-    # Rule 1 & 2: If today's challenge is completed, do NOT show any notification!
+    # Rule 1: If today's challenge is completed, do NOT show any notification!
     if is_today_completed():
         return False, f"Today ({today}) challenge is already COMPLETED. All notifications suppressed."
 
-    # Rule 3: Before time check - verify challenge status
+    # Check state file
+    state = load_notifier_state()
+    if state.get("today_completed") and state.get("last_first_open_date") == today:
+        return False, f"Today ({today}) marked completed in state. All notifications suppressed."
+
+    # Rule 2: Ensure today's challenge is active and check status
+    ensure_today_challenge_activated()
     data = get_today_status()
     challenge = data.get("challenge", {})
     status = challenge.get("status", "pending")
@@ -470,10 +599,7 @@ def is_notification_allowed(force: bool = False) -> tuple:
     if assigned_date and assigned_date > today:
         return False, f"Day {day} is scheduled for future date {assigned_date}. Before time (00:00): no notification allowed."
 
-    if status == "upcoming" and (not assigned_date or assigned_date > today):
-        return False, f"Day {day} is UPCOMING. Before time (00:00): no notification allowed."
-
-    return True, "On or after 00:00 and challenge is pending."
+    return True, f"Day {day} is pending. Notification allowed."
 
 _last_toast_time = 0
 _toast_lock = threading.Lock()
@@ -570,20 +696,28 @@ def launch_gui_popup(popup_data: dict, force: bool = False):
             print(f"🔕 [Popup Suppressed] {reason}")
             return
 
-    if is_popup_window_open():
-        print("ℹ️ [Popup Alert] Desktop popup card is already active on screen.")
-        return
+    # Terminate any old/stale popups so exactly ONE card ever exists on screen
+    close_all_popups()
+    time.sleep(0.15)
 
     try:
         data_json = json.dumps(popup_data)
         pythonw_exe = sys.executable.replace("python.exe", "pythonw.exe")
         notifier_script = Path(__file__).resolve()
 
-        subprocess.Popen(
+        proc = subprocess.Popen(
             [pythonw_exe, str(notifier_script), "--popup-data", data_json],
             cwd=str(BASE_DIR),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         )
+        lock_file = DATA_DIR / "popup_open.lock"
+        try:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            with open(lock_file, "w", encoding="utf-8") as f:
+                f.write(str(proc.pid))
+        except Exception:
+            pass
+
         print("🖥️ [Popup Alert] Directly popped up interactive alert card on laptop screen!")
     except Exception as e:
         print(f"Error launching popup subprocess: {e}")
@@ -810,7 +944,26 @@ def show_gui_popup(
                 open_btn.config(text="Opening Chrome...", state="disabled")
             except Exception:
                 pass
-            open_url_in_chrome(link or "https://unstop.com/practice/coding")
+            target_link = link
+            # Always ensure we open the newest task of that day from Vercel live website
+            try:
+                if fetch_today_task_from_vercel:
+                    v_task = fetch_today_task_from_vercel()
+                    if v_task and v_task.get("link"):
+                        target_link = v_task.get("link")
+                else:
+                    v_res = requests.get("https://unstop-gold.vercel.app/api/today", timeout=3)
+                    if v_res.status_code == 200:
+                        v_task = v_res.json().get("challenge", {})
+                        if v_task and v_task.get("link"):
+                            target_link = v_task.get("link")
+            except Exception as e:
+                print(f"Notice fetching from Vercel on open: {e}")
+
+            if not target_link:
+                target_link = "https://unstop.com/practice/coding"
+
+            open_url_in_chrome(target_link)
             root.after(400, close_win)
 
         def mark_as_done():
@@ -849,6 +1002,8 @@ def show_gui_popup(
                 state = load_notifier_state()
                 state["last_first_open_date"] = today_date_str()
                 state["first_open_resolved_at"] = datetime.now(IST).isoformat()
+                state["notifications_suppressed"] = True
+                state["today_completed"] = True
                 save_notifier_state(state)
             root.after(300, close_win)
 
@@ -861,7 +1016,7 @@ def show_gui_popup(
 
         open_btn = tk.Button(
             btn_row,
-            text=f"🚀 Open Day {day} in Chrome",
+            text=f"🚀 Complete This in Chrome",
             font=("Segoe UI", 9, "bold"),
             bg="#10b981",
             fg="#ffffff",
@@ -983,9 +1138,11 @@ def send_phone_push(title: str, body: str, link: str) -> bool:
         print(f"❌ [ntfy] Failed to send push: {e}")
         return False
 
-def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") -> bool:
+def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open", is_command: bool = False) -> bool:
     """
-    Called whenever the laptop is opened, unlocked, or woken from sleep.
+    Called whenever:
+    - The laptop lid is opened, workstation is unlocked, or woken from sleep.
+    - An explicit CLI command is run.
     If today's challenge is not yet completed, directly pops up the desktop alert card
     and delivers the Windows notification banner and ntfy.sh phone push.
     """
@@ -999,19 +1156,22 @@ def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") 
     state = load_notifier_state()
     now_ts = time.time()
 
-    # 1. Check snooze
-    if not force and now_ts < state.get("snooze_until", 0):
+    # 1. Check snooze (commands/force bypass snooze)
+    if not force and not is_command and now_ts < state.get("snooze_until", 0):
         remaining = int(state.get("snooze_until", 0) - now_ts)
         print(f"⏰ [Laptop Open Check] Snoozed ({remaining}s remaining). Skipping popup.")
         return False
 
-    # 2. Strict Cooldown: Only notify ONCE per laptop opening, with a minimum 15-minute cooldown
-    COOLDOWN_SECONDS = 900  # 15 minutes cooldown to completely stop notification spam
-    last_popup_time = state.get("last_popup_time", 0)
-    if not force and (now_ts - last_popup_time) < COOLDOWN_SECONDS:
-        elapsed = int(now_ts - last_popup_time)
-        print(f"⏳ [Laptop Open Alert] Notification suppressed – still within 15-min cooldown ({elapsed}s / {COOLDOWN_SECONDS}s elapsed).")
-        return False
+    # 2. Debouncing:
+    # Explicit commands (is_command=True or force=True) bypass debounce.
+    # Automatic lid/wake triggers debounce rapid duplicate hardware events within 15 seconds.
+    if not force and not is_command:
+        COOLDOWN_SECONDS = 15
+        last_popup_time = state.get("last_popup_time", 0)
+        if (now_ts - last_popup_time) < COOLDOWN_SECONDS:
+            elapsed = int(now_ts - last_popup_time)
+            print(f"⏳ [Laptop Open Alert] Debounced – event received within {COOLDOWN_SECONDS}s of previous trigger ({elapsed}s elapsed).")
+            return False
 
     # 3. Check if desktop card popup is already open on screen
     if not force and is_popup_window_open():
@@ -1042,7 +1202,10 @@ def trigger_laptop_open_alert(force: bool = False, reason: str = "Laptop Open") 
         print(f"✅ [Laptop Open Check] Day {day} is already SOLVED! Notification completely suppressed.")
         state["last_first_open_date"] = today
         state["first_open_resolved_at"] = datetime.now(IST).isoformat()
+        state["notifications_suppressed"] = True
+        state["today_completed"] = True
         save_notifier_state(state)
+        close_all_popups()
         return False
 
     is_first_open = (state.get("last_first_open_date") != today)
@@ -1146,48 +1309,84 @@ def background_auto_sync_loop():
 
 def periodic_wake_checker():
     """
-    Actively monitors laptop lid open / wake events.
+    Actively monitors:
+    1. Laptop lid open / wake from sleep / modern standby.
+    2. Workstation unlock.
+    3. 12:00 AM (midnight IST) date rollover.
     Strict Policy:
-    1. Notification will ONLY pop up ONCE every time the laptop lid is opened.
-    2. Notification will ONLY pop up IF today's task is NOT completed.
-    3. If today's task IS completed, notification is completely SUPPRESSED (zero popups/toasts).
-    4. While the laptop remains open and in use, NO repeat notifications or periodic timers will pop up.
+    - Notification pops up ONLY ONCE when the laptop lid is opened / workstation unlocked if task is NOT completed.
+    - If today's task IS completed, notification is completely SUPPRESSED (zero popups/toasts).
+    - At 12:00 AM (midnight), fires notification if today's task is NOT completed.
+    - While laptop stays open and in use, NO repeat notifications or periodic timers will pop up.
     """
     # Start auto-sync on independent background daemon thread
     threading.Thread(target=background_auto_sync_loop, daemon=True).start()
 
     last_tick = time.time()
     lid_open_pending = False
+    was_locked = is_workstation_locked()
+    last_date_seen = today_date_str()
+    last_midnight_notified = ""
 
-    print("👀 [Lid Monitor] Active: Monitoring laptop lid open events...")
+    print("👀 [Lid Monitor] Active: Monitoring laptop lid open events and 12:00 AM midnight transitions...")
 
     while True:
         try:
             time.sleep(1.0)
-            now = time.time()
-            elapsed_since_tick = now - last_tick
-            last_tick = now
+            now_ts = time.time()
+            elapsed_since_tick = now_ts - last_tick
+            last_tick = now_ts
 
-            # Detect System Wake / Lid Open:
-            # When the laptop lid is closed, Windows enters Modern Standby or Sleep.
-            # While suspended, time.sleep(1.0) freezes.
-            # Upon opening the laptop lid, elapsed_since_tick jumps (>= 15.0s).
-            is_system_wake = (elapsed_since_tick >= 15.0)
+            current_today = today_date_str()
+            now_dt = datetime.now(IST)
+            is_locked = is_workstation_locked()
 
-            if is_system_wake:
-                print(f"💻 [Lid Open Event] Laptop lid opened / woke from sleep (suspended ~{int(elapsed_since_tick)}s).")
+            # ── 1. Check 12:00 AM Midnight Transition / Date Rollover ──
+            # Fires when clock hits 00:00 or when laptop is active on a new date
+            if current_today != last_date_seen or (now_dt.hour == 0 and now_dt.minute == 0 and last_midnight_notified != current_today):
+                print(f"🕛 [Midnight Event] 12:00 AM reached or date rolled over to {current_today}!")
+                last_date_seen = current_today
+                last_midnight_notified = current_today
+
+                try:
+                    ensure_today_challenge_activated()
+                except Exception as ex:
+                    print(f"Error activating today's challenge: {ex}")
+
+                # If laptop is unlocked and today's task not completed, notify at 12:00 AM!
+                if not is_locked:
+                    allowed, _ = is_notification_allowed(force=False)
+                    if allowed:
+                        print("🔔 [12:00 AM Alert] Firing 12:00 AM midnight notification!")
+                        trigger_laptop_open_alert(force=False, reason="12:00 AM Midnight", is_command=False)
+
+            # ── 2. Detect System Wake / Lid Open / Unlock ──
+            # (a) Standby/sleep resume: time.sleep(1.0) took >= 2.0s
+            is_system_wake = (elapsed_since_tick >= 2.0)
+            # (b) Workstation unlocked: transition from locked to unlocked
+            is_unlock = (was_locked and not is_locked)
+            was_locked = is_locked
+
+            if is_system_wake or is_unlock:
+                event_reason = "Laptop lid opened / woke from sleep" if is_system_wake else "Workstation unlocked / lid opened"
+                print(f"💻 [Lid Open Event] {event_reason} (elapsed ~{int(elapsed_since_tick)}s).")
                 lid_open_pending = True
 
             # When laptop lid is opened:
-            # Wait until workstation is NOT locked (user has unlocked and is at the desktop)
             if lid_open_pending:
-                if is_workstation_locked():
-                    # Still on Windows lock screen, wait until user unlocks
+                if is_locked:
+                    # Still on Windows lock screen, wait until user unlocks into desktop
                     continue
 
                 # User is active on the desktop! Clear pending immediately so it fires ONLY ONCE
                 lid_open_pending = False
                 time.sleep(1.0)  # Brief pause for desktop shell to stabilize
+
+                # Ensure today's challenge is activated in DB
+                try:
+                    ensure_today_challenge_activated()
+                except Exception:
+                    pass
 
                 # Immediate check/sync from browser history so completed tasks are instantly recognized
                 if auto_sync_and_mark_completed:
@@ -1199,15 +1398,17 @@ def periodic_wake_checker():
                 allowed, reason = is_notification_allowed(force=False)
                 if not allowed:
                     print(f"🔕 [Lid Open Check] Challenge already completed / suppressed: {reason}")
+                    # Close any stale popups if completed
+                    close_all_popups()
                 else:
                     print("🔔 [Lid Open Check] Today's task is NOT completed! Pushing reminder once upon opening lid...")
-                    trigger_laptop_open_alert(force=False, reason="Laptop Lid Opened")
+                    trigger_laptop_open_alert(force=False, reason=event_reason, is_command=False)
 
                 # Reset last_tick so the duration of showing the alert is NEVER counted as system sleep
                 last_tick = time.time()
 
         except Exception as e:
-            time.sleep(5)
+            time.sleep(2)
             last_tick = time.time()
 
 def install_startup():
@@ -1324,15 +1525,25 @@ if __name__ == "__main__":
             missed_count=st_data.get("missed", 1)
         )
         sys.exit(0)
-    elif "--first-open" in args:
+    elif "--first-open" in args or "--check" in args or "--notify" in args:
         force_flag = "--force" in args or "-f" in args
-        print("\n☀️ [Laptop Open Trigger] Checking laptop open alert trigger...")
-        triggered = trigger_laptop_open_alert(force=force_flag, reason="CLI Test Trigger")
+        print("\n☀️ [Laptop Notification Check] Checking today's challenge status...")
+        data = get_today_status()
+        c = data.get("challenge", {})
+        status = c.get("status", "pending")
+        day = c.get("day", 1)
+
+        if status == "solved" and not force_flag:
+            print(f"✅ Day {day} challenge is already completed and marked as SOLVED!")
+            print("🔕 Notification is suppressed per strict policy (zero popups/toasts).\n")
+            sys.exit(0)
+
+        print(f"🔔 Day {day} challenge is NOT completed ({status.upper()})! Pushing notification...")
+        triggered = trigger_laptop_open_alert(force=force_flag, reason="CLI Command Check", is_command=True)
         if triggered:
-            print("✅ Alert delivered successfully (Popup & Toast)!\n")
+            print("✅ Notification delivered successfully to your laptop screen (Popup Card & Windows Toast)!\n")
         else:
-            print("ℹ️ Check completed. (No notification required or already completed for today).\n")
-            print("💡 Use '--force' to test the notification regardless of status: python unstop_laptop_notifier.py --first-open --force\n")
+            print("ℹ️ Notification card already open or active on screen.\n")
         sys.exit(0)
     elif "--popup" in args:
         data = get_today_status()
@@ -1363,49 +1574,70 @@ if __name__ == "__main__":
             streak_remaining=st.get("streak_remaining", 30 if st.get("is_broken") else max(0, 30 - streak)),
             status=c.get("status", "pending"),
             solved_count=st.get("solved", 12),
-            missed_count=st.get("missed", 1)
+            missed_count=st.get("missed", 1),
+            force="--force" in args or "-f" in args
         )
         sys.exit(0)
     elif "--wake" in args or "--test-wake" in args:
         force_flag = "--force" in args
         print("\n💻 [Laptop Wake Check] Checking challenge status on laptop open...")
-        time.sleep(1)
         data = get_today_status()
         c = data.get("challenge", {})
-        st = data.get("stats", {})
-        u = data.get("user", {})
         day = c.get("day", 1)
         status = c.get("status", "pending")
-        streak = st.get("streak", 0)
-        link = c.get("link") or u.get("practiceUrl") or "https://unstop.com/practice/coding"
-        user_name = u.get("name", "Animesh").split()[0]
 
         if status == "solved" and not force_flag:
             print(f"✅ Day {day} is already completed & marked as SOLVED!")
             print("🔕 Active Tracking: Laptop wake notification is completely SUPPRESSED.")
-            print("✨ Zero popups or banners will appear on your home screen.")
-            print("💡 (To force-test: python unstop_laptop_notifier.py --wake --force)\n")
+            print("✨ Zero popups or banners will appear on your home screen.\n")
             sys.exit(0)
 
         print(f"⚡ Day {day} is NOT completed yet ({status.upper()})! Firing home screen notification...")
-        trigger_laptop_open_alert(force=force_flag, reason="Wake Test")
+        trigger_laptop_open_alert(force=force_flag, reason="Wake Test", is_command=True)
         print("✅ Notification delivered to your laptop home screen!\n")
         sys.exit(0)
-    elif "--check" in args:
-        trigger_laptop_open_alert(force=False, reason="Command line check")
-        time.sleep(10)
-        sys.exit(0)
+
+    # When run directly (e.g. `python unstop_laptop_notifier.py`):
+    # 1. If background daemon is ALREADY running:
+    # Trigger notification immediately if task is not completed, and exit cleanly without starting a duplicate daemon.
+    if DAEMON_LOCK_FILE.exists():
+        try:
+            with open(DAEMON_LOCK_FILE, "r", encoding="utf-8") as f:
+                old_pid = int(f.read().strip())
+            if old_pid != os.getpid():
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, old_pid)
+                if handle:
+                    kernel32.CloseHandle(handle)
+                    # Background daemon is actively running!
+                    print(f"ℹ️ [Notifier Daemon] Background monitor is active (PID {old_pid}) listening for lid events.")
+                    data = get_today_status()
+                    c = data.get("challenge", {})
+                    status = c.get("status", "pending")
+                    day = c.get("day", 1)
+                    if status == "solved":
+                        print(f"✅ Day {day} challenge is already completed and marked as SOLVED!")
+                        print("🔕 Notification is suppressed per strict policy (zero popups/toasts).\n")
+                    else:
+                        print(f"🔔 Day {day} challenge is NOT completed ({status.upper()})! Firing notification...")
+                        trigger_laptop_open_alert(force=False, reason="CLI Command Run", is_command=True)
+                        print("✅ Notification delivered to your laptop screen (Popup Card & Windows Toast)!\n")
+                    sys.exit(0)
+        except Exception:
+            pass
 
     # Ensure only one instance of the background daemon runs
     if not acquire_daemon_lock():
         sys.exit(0)
 
     print("🚀 [Laptop Notifier] Starting Unstop Laptop Home Screen Notifier...")
-    time.sleep(2)  # Wait 2s on initial launch so Windows Explorer / Action Center is ready
+    time.sleep(1)
 
     # Initial check on startup / logon
     if is_notification_allowed()[0]:
-        trigger_laptop_open_alert(force=False, reason="Laptop Startup / Logon")
+        trigger_laptop_open_alert(force=False, reason="Laptop Startup / Logon", is_command=False)
     else:
         print("🔕 [Startup Check] Notifications suppressed per policy (challenge completed or before 00:00).")
 

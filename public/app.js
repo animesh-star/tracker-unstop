@@ -179,7 +179,7 @@ async function loadData(silent = false) {
       if (liveLabel) liveLabel.textContent = 'Live Sync: Active';
     }
 
-    // Show modal if pending after midnight
+    // Show modal only if pending after midnight
     if (challenge && challenge.status === 'pending' && challenge.reminded_at) {
       const remDate = new Date(challenge.reminded_at);
       const now = new Date();
@@ -189,6 +189,11 @@ async function loadData(silent = false) {
         startCountdown(remDate);
         showAlertModal(challenge, user);
       }
+    } else if (challenge && challenge.status === 'solved') {
+      // Never show reminders or alerts once solved
+      remindedAt = null;
+      stopCountdown();
+      closeModal();
     }
   } catch (err) {
     console.error('[App] Load data error:', err);
@@ -549,12 +554,12 @@ function renderHistory(challenges = []) {
     const statusChip = c.status === 'solved'
       ? '<span class="status-chip chip-solved">✅ Solved</span>'
       : c.status === 'pending'
-      ? '<span class="status-chip chip-pending">⚡ Active Quest</span>'
-      : c.status === 'missed'
-      ? '<span class="status-chip chip-missed">💔 Missed</span>'
-      : c.status === 'skipped'
-      ? '<span class="status-chip chip-skipped">⏭️ Skipped</span>'
-      : '<span class="status-chip" style="background:rgba(255,255,255,0.06); color:var(--text-3)">🔒 Upcoming</span>';
+        ? '<span class="status-chip chip-pending">⚡ Active Quest</span>'
+        : c.status === 'missed'
+          ? '<span class="status-chip chip-missed">💔 Missed</span>'
+          : c.status === 'skipped'
+            ? '<span class="status-chip chip-skipped">⏭️ Skipped</span>'
+            : '<span class="status-chip" style="background:rgba(255,255,255,0.06); color:var(--text-3)">🔒 Upcoming</span>';
 
     const solvedAt = c.solved_at
       ? new Date(c.solved_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })
@@ -575,6 +580,80 @@ function renderHistory(challenges = []) {
   }).join('');
 }
 
+// ─── Actions: Open Task in Chrome ──────────────────────────────────────────────
+async function openTaskInChrome() {
+  const btn = document.getElementById('btn-open-chrome');
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.innerHTML = '<span class="btn-icon">⏳</span><span>Fetching from Vercel...</span>';
+    btn.disabled = true;
+  }
+
+  try {
+    let targetUrl = currentChallenge?.link;
+    let taskTitle = currentChallenge?.title || 'Today\'s Coding Quest';
+
+    // 1. Fetch latest task of the day directly from the Vercel live website
+    try {
+      const res = await fetch('https://unstop-gold.vercel.app/api/today');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.challenge && data.challenge.link) {
+          targetUrl = data.challenge.link;
+          taskTitle = data.challenge.title || taskTitle;
+          currentChallenge = data.challenge;
+
+          // Sync local if running local backend
+          if (API_BASE) {
+            fetch(`${API_BASE}/api/challenge/update`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                day: data.challenge.day,
+                link: data.challenge.link,
+                title: data.challenge.title
+              })
+            }).catch(() => { });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[App] Vercel task fetch warning:', err);
+    }
+
+    const safeLink = sanitizeUrl(targetUrl || 'https://unstop.com/practice/coding');
+
+    // 2. If running locally with desktop backend, trigger native Google Chrome launch
+    let launchedNative = false;
+    try {
+      const nativeRes = await fetch(`${API_BASE}/api/open-chrome`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: safeLink })
+      });
+      if (nativeRes.ok) {
+        const nativeData = await nativeRes.json();
+        if (nativeData.success) launchedNative = true;
+      }
+    } catch (_) { }
+
+    // 3. Fallback or standard browser open
+    if (!launchedNative) {
+      window.open(safeLink, '_blank', 'noopener,noreferrer');
+    }
+
+    showToast(`🚀 Opened ${taskTitle} from Vercel in Google Chrome!`, 'success');
+  } catch (err) {
+    console.error('[App] Error in openTaskInChrome:', err);
+    showToast('Failed to open challenge in Chrome', 'error');
+  } finally {
+    if (btn) {
+      btn.innerHTML = originalHtml || '<span class="btn-icon">🚀</span><span>Complete This in Chrome</span>';
+      btn.disabled = false;
+    }
+  }
+}
+
 // ─── Actions: Mark as Solved ──────────────────────────────────────────────────
 async function markSolved() {
   const solveBtn = document.getElementById('btn-solve');
@@ -591,6 +670,7 @@ async function markSolved() {
     if (res.ok && data.success) {
       showToast(`🎉 Streak Maintained! ${data.message || 'Challenge solved!'}`, 'success');
       launchConfetti();
+      remindedAt = null;
       stopCountdown();
       closeModal();
       await loadData();

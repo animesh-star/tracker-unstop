@@ -13,8 +13,8 @@ import json
 import sqlite3
 import shutil
 import tempfile
-import subprocess
 import threading
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -320,8 +320,16 @@ def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved:
     except Exception as ex:
         return {"synced": False, "error": str(ex)}
 
+_last_cloud_sync_time = 0
+
 def sync_to_cloud(force: bool = False) -> bool:
     """Pushes local challenges & settings directly to https://unstop-gold.vercel.app/api/cloud-sync"""
+    global _last_cloud_sync_time
+    now = time.time()
+    if not force and (now - _last_cloud_sync_time) < 30:
+        return True
+    _last_cloud_sync_time = now
+
     cloud_url = os.getenv("CLOUD_SYNC_URL", "https://unstop-gold.vercel.app/api/cloud-sync")
     api_secret = os.getenv("API_SECRET", "animesh_secure_unstop_key_2026")
     try:
@@ -348,6 +356,62 @@ def sync_to_cloud(force: bool = False) -> bool:
     except Exception as e:
         print(f"⚠️ [Cloud Sync] Notice: {e}")
         return False
+
+def fetch_today_task_from_vercel() -> Optional[Dict[str, Any]]:
+    """
+    Fetches the live challenge of today from https://unstop-gold.vercel.app/api/today.
+    If the live Vercel website has a new task or updated problem link/title for today,
+    it synchronizes local challenges.json with the Vercel live website.
+    """
+    cloud_url = os.getenv("CLOUD_BASE_URL", "https://unstop-gold.vercel.app") + "/api/today"
+    try:
+        res = requests.get(cloud_url, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            cloud_challenge = data.get("challenge", {})
+            if cloud_challenge and "day" in cloud_challenge:
+                c_day = cloud_challenge.get("day")
+                c_link = cloud_challenge.get("link")
+                c_title = cloud_challenge.get("title")
+                c_status = cloud_challenge.get("status")
+
+                # Update local DB files
+                for path in (DB_PATH, BASE_DIR / "challenges.json"):
+                    if path.exists():
+                        try:
+                            with open(path, "r", encoding="utf-8") as f:
+                                db = json.load(f)
+                            updated = False
+                            for c in db.get("challenges", []):
+                                if c.get("day") == c_day:
+                                    if c_link and c.get("link") != c_link:
+                                        c["link"] = c_link
+                                        updated = True
+                                    if c_title and c.get("title") != c_title:
+                                        c["title"] = c_title
+                                        updated = True
+                                    if c_status == "solved" and c.get("status") != "solved":
+                                        c["status"] = "solved"
+                                        c["solved_at"] = cloud_challenge.get("solved_at")
+                                        updated = True
+                                    break
+                            if updated:
+                                tmp_file = path.with_suffix(".tmp")
+                                try:
+                                    with open(tmp_file, "w", encoding="utf-8") as tf:
+                                        json.dump(db, tf, indent=2)
+                                    os.replace(tmp_file, path)
+                                except Exception:
+                                    with open(path, "w", encoding="utf-8") as f:
+                                        json.dump(db, f, indent=2)
+                                print(f"☁️ [Cloud Sync] Synced new task from Vercel for Day {c_day}: {c_title} -> {c_link}")
+                        except Exception as ex:
+                            print(f"Error updating local DB from Vercel: {ex}")
+                return cloud_challenge
+    except Exception as e:
+        print(f"Notice fetching from Vercel: {e}")
+    return None
+
 
 if __name__ == "__main__":
     print("🔍 Testing Unstop Browser Activity Fetcher...")

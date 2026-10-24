@@ -554,6 +554,26 @@ app.post('/api/test-first-open', sensitiveActionLimiter, requireAuth, (req, res)
   }
 });
 
+app.post('/api/open-chrome', (req, res) => {
+  const rawUrl = req.body?.url || 'https://unstop.com/practice/coding';
+  const targetUrl = db.sanitizeUrl(rawUrl) || 'https://unstop.com/practice/coding';
+  if (process.platform === 'win32') {
+    try {
+      const { spawn } = require('child_process');
+      const child = spawn('cmd.exe', ['/c', 'start', '""', 'chrome', targetUrl], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      child.unref();
+      return res.json({ success: true, url: targetUrl });
+    } catch (err) {
+      return res.json({ success: false, error: err.message, fallback: true });
+    }
+  }
+  res.json({ success: false, fallback: true });
+});
+
 // Trigger an immediate manual backup (protected)
 app.post('/api/backup', sensitiveActionLimiter, requireAuth, (req, res) => {
   const backup = db.createDailyBackup();

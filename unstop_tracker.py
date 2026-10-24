@@ -588,6 +588,8 @@ def update_challenge_status(day: int, status: str) -> None:
         if c.get("day") == day:
             c["status"] = status
             c["solved_at"] = now_iso() if status == "solved" else None
+            if status == "solved":
+                c["reminded_at"] = None
             break
     write_db(db)
     evaluate_and_update_missed_days()
@@ -703,24 +705,29 @@ def _run_silent_powershell(args, timeout: int = 20):
     )
 
 def is_today_completed() -> bool:
-    """Returns True if today's challenge has already been completed / solved."""
+    """Returns True ONLY if today's challenge has already been completed / solved."""
     today = today_date_str()
     db = read_db()
     challenges = db.get("challenges", [])
 
     # 1. First check if any challenge was solved today
-    for c in challenges:
-        if c.get("status") == "solved":
-            solved_date = (c.get("solved_at") or "").split("T")[0]
-            assigned_date = c.get("assigned_date") or ""
-            if solved_date == today or assigned_date == today:
-                return True
+    solved_today = any(
+        c.get("status") == "solved" and (c.get("solved_at") or "").split("T")[0] == today
+        for c in challenges
+    )
+    if solved_today:
+        return True
 
-    # 2. Check if there is an active pending challenge for today
-    today_pending = next((c for c in challenges if c.get("status") == "pending" or (c.get("assigned_date") == today and c.get("status") != "solved")), None)
-    if today_pending:
-        return False
+    # 2. Check if today's assigned challenge exists and is solved
+    today_challenge = next((c for c in challenges if c.get("assigned_date") == today), None)
+    if today_challenge:
+        return today_challenge.get("status") == "solved"
 
+    # 3. Check if all challenges are solved
+    if challenges and all(c.get("status") == "solved" for c in challenges):
+        return True
+
+    # If there are active, pending, or upcoming challenges for the 30-day track, today is NOT completed
     return False
 
 def is_notification_allowed(force: bool = False) -> tuple[bool, str]:
@@ -1028,15 +1035,16 @@ def scheduler_loop():
                     except Exception as e:
                         pass
 
-            # Midnight Trigger (12:00 AM IST) - on and after 00:00
-            if now.hour == 0 and now.minute == 0:
-                if last_midnight_checked != current_date_str:
-                    print(f"\n🕛 [Python] 12:00 AM IST reached (00:00) — evaluating streak reset & snapshot backup...")
-                    create_daily_backup()
-                    handle_midnight_reset()
-                    if not is_today_completed():
-                        fire_reminder(is_repeat=False)
-                    last_midnight_checked = current_date_str
+            # Midnight Trigger & Date Rollover (12:00 AM IST onwards)
+            if last_midnight_checked != current_date_str:
+                # Runs at 00:00 or as soon as the laptop is active on a new date
+                print(f"\n🕛 [Python] 12:00 AM IST / Date rollover to {current_date_str} — evaluating streak reset & activating today's challenge...")
+                create_daily_backup()
+                handle_midnight_reset()
+                get_or_create_today_challenge()
+                if not is_today_completed():
+                    fire_reminder(is_repeat=False)
+                last_midnight_checked = current_date_str
 
             # Evening Streak Warning at 10:00 PM (22:00) IST before midnight deadline
             if now.hour == 22 and now.minute == 0:
@@ -1560,6 +1568,21 @@ def api_test_first_open():
     subprocess.Popen(cmd, creationflags=creationflags, startupinfo=startupinfo)
     return {"success": True, "message": "Notification triggered silently!"}
 
+
+@app.post("/api/open-chrome")
+async def api_open_chrome(request: Request):
+    target_url = "https://unstop.com/practice/coding"
+    try:
+        body = await request.json()
+        target_url = body.get("url") or target_url
+    except Exception:
+        pass
+    try:
+        from unstop_laptop_notifier import open_url_in_chrome
+        open_url_in_chrome(target_url)
+        return {"success": True, "url": target_url}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @app.post("/api/backup", dependencies=[Depends(verify_api_key)])
 def api_trigger_backup():

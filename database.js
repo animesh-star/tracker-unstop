@@ -232,15 +232,46 @@ function getOrCreateTodayChallenge() {
   });
   if (todaySolved) return todaySolved;
 
-  // 2. Prioritize active pending quest
-  const pending = db.challenges.find(c => c.status === 'pending');
-  if (pending) return pending;
+  // 2. Check if a challenge is already assigned for today
+  let todayAssigned = db.challenges.find(c => c.assigned_date === today);
+  if (todayAssigned) {
+    if (todayAssigned.status === 'upcoming') {
+      todayAssigned.status = 'pending';
+      writeDB(db);
+    }
+    return todayAssigned;
+  }
 
-  // 3. Fallback to next sequential day
-  const maxSolved = db.challenges.reduce((max, c) => (c.status === 'solved' ? Math.max(max, c.day || 0) : max), 0);
-  const nextDay = Math.min(maxSolved + 1, 30);
+  // 3. Prioritize active pending quest
+  let pending = db.challenges.find(c => c.status === 'pending');
+  if (pending) {
+    if (!pending.assigned_date) {
+      pending.assigned_date = today;
+      writeDB(db);
+    }
+    return pending;
+  }
+
+  // 4. Next sequential active day after highest solved or missed challenge
+  let maxCompletedOrMissedDay = 0;
+  for (const c of db.challenges) {
+    if (c.status === 'solved' || c.status === 'missed') {
+      if ((c.day || 0) > maxCompletedOrMissedDay) {
+        maxCompletedOrMissedDay = c.day || 0;
+      }
+    }
+  }
+
+  const nextDay = Math.min(maxCompletedOrMissedDay + 1, 30);
   const match = db.challenges.find(c => c.day === nextDay);
-  if (match) return match;
+  if (match) {
+    if (match.status !== 'solved') {
+      match.status = 'pending';
+      match.assigned_date = today;
+      writeDB(db);
+    }
+    return match;
+  }
 
   return db.challenges[0] || null;
 }
@@ -375,6 +406,21 @@ function updateChallengeStatus(day, status) {
   if (c) {
     c.status = sanitizedStatus;
     c.solved_at = sanitizedStatus === 'solved' ? nowISO() : null;
+    if (sanitizedStatus === 'solved') {
+      c.reminded_at = null; // Clear active reminder
+      try {
+        const stateFile = path.join(DATA_DIR, 'notifier_state.json');
+        let state = {};
+        if (fs.existsSync(stateFile)) {
+          state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+        }
+        state.last_first_open_date = todayDateStr();
+        state.first_open_resolved_at = nowISO();
+        state.notifications_suppressed = true;
+        state.today_completed = true;
+        fs.writeFileSync(stateFile, JSON.stringify(state, null, 2), 'utf8');
+      } catch {}
+    }
     writeDB(db);
     evaluateAndUpdateMissedDays();
     return c;

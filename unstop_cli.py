@@ -455,12 +455,21 @@ def send_laptop_notification(force: bool = False):
                 pass
 
     try:
-        from unstop_laptop_notifier import send_laptop_toast
-        title = f"⚡ Day {day} Unstop Challenge Alert!"
-        body = f"Hey {first_name}! Day {day} Challenge is waiting! Keep your 30-day streak alive! 🚀"
-        subtext = "Click to open in Unstop."
-        send_laptop_toast(title, body, link, subtext=subtext, force=True)
-        print(f"\n💻 Native laptop toast notification fired completely silently to your screen for Day {day}!\n")
+        from unstop_laptop_notifier import trigger_laptop_open_alert, get_today_status
+        data = get_today_status()
+        c = data.get("challenge", {})
+        status = c.get("status", "pending")
+        day = c.get("day", 1)
+        if status == "solved" and not force:
+            print(f"\n✅ Day {day} challenge is already completed and marked as SOLVED!")
+            print("🔕 Notification is suppressed per strict policy (zero popups/toasts).\n")
+            return
+        print(f"\n🔔 Day {day} challenge is NOT completed ({status.upper()})! Firing notification...")
+        triggered = trigger_laptop_open_alert(force=force, reason="CLI laptop command", is_command=True)
+        if triggered:
+            print("✅ Notification delivered to your laptop home screen (Popup Card & Windows Toast)!\n")
+        else:
+            print("ℹ️ Notification card already active or displayed on screen.\n")
     except Exception as e:
         print(f"❌ Failed to trigger laptop notification: {e}")
 
@@ -808,29 +817,41 @@ if __name__ == "__main__":
     elif cmd in ("first-open", "first", "firstopen", "test-first-open"):
         force_flag = "--force" in sys.argv or "-f" in sys.argv
         notifier_script = BASE_DIR / "unstop_laptop_notifier.py"
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
-        startupinfo = None
-        if sys.platform == "win32":
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = 0
         args = [sys.executable, str(notifier_script), "--first-open"]
         if force_flag:
             args.append("--force")
-        subprocess.run(args, creationflags=creationflags, startupinfo=startupinfo)
-    elif cmd in ("open", "chrome", "open-task", "solve-now"):
+        subprocess.run(args)
+    elif cmd in ("open", "chrome", "open-task", "solve-now", "complete-chrome", "complete-this"):
         from unstop_laptop_notifier import open_url_in_chrome
+        from unstop_sync import fetch_today_task_from_vercel
+        day = 1
+        link = "https://unstop.com/practice/coding"
+        title = "Today's Challenge"
+
+        # 1. First fetch latest task of that day from Vercel live website
         try:
-            res = requests.get(f"{BASE_URL}/today", headers=get_headers(), timeout=3)
-            data = res.json()
-            c = data.get("challenge", {})
-            link = c.get("link") or data.get("user", {}).get("practiceUrl") or "https://unstop.com/practice/coding"
-            day = c.get("day", 1)
+            v_task = fetch_today_task_from_vercel()
+            if v_task and v_task.get("link"):
+                link = v_task.get("link")
+                day = v_task.get("day", 1)
+                title = v_task.get("title", f"Day {day} Challenge")
         except Exception:
-            link = "https://unstop.com/practice/coding"
-            day = 1
+            pass
+
+        # 2. Fallback to local server if Vercel fetch failed
+        if link == "https://unstop.com/practice/coding":
+            try:
+                res = requests.get(f"{BASE_URL}/today", headers=get_headers(), timeout=3)
+                data = res.json()
+                c = data.get("challenge", {})
+                link = c.get("link") or data.get("user", {}).get("practiceUrl") or link
+                day = c.get("day", 1)
+                title = c.get("title", f"Day {day} Challenge")
+            except Exception:
+                pass
+
         open_url_in_chrome(link)
-        print(f"\n🚀 Redirected Day {day} challenge directly to Google Chrome!\n🔗 URL: {link}\n")
+        print(f"\n🚀 Redirected Day {day} challenge directly to Google Chrome!\n📌 Problem: {title}\n🔗 URL: {link}\n")
     elif cmd in ("popup", "test-popup", "card"):
         notifier_script = BASE_DIR / "unstop_laptop_notifier.py"
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
