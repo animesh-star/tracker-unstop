@@ -1022,17 +1022,20 @@ def scheduler_loop():
             # Background Auto-Sync: Check every 25 seconds for Unstop completion in browser
             if now_ts - last_sync_time >= 25:
                 last_sync_time = now_ts
-                if auto_sync_and_mark_completed:
+                if auto_sync_and_mark_completed and not is_today_completed():
                     try:
                         sync_res = auto_sync_and_mark_completed()
                         if sync_res.get("synced") and sync_res.get("newly_solved"):
                             print(f"🎉 [Python Scheduler] Detected completed challenge on Unstop! '{sync_res.get('title')}' auto-marked as SOLVED.")
                             if sync_to_cloud:
                                 sync_to_cloud()
-                        elif sync_to_cloud and (now_ts % 120 < 25):
-                            # Periodic heartbeat push every ~2 minutes
-                            sync_to_cloud()
                     except Exception as e:
+                        pass
+                elif sync_to_cloud and (now_ts % 120 < 25):
+                    # Periodic heartbeat push every ~2 minutes
+                    try:
+                        sync_to_cloud()
+                    except Exception:
                         pass
 
             # Midnight Trigger & Date Rollover (12:00 AM IST onwards)
@@ -1406,6 +1409,7 @@ def api_solve():
                 state["first_open_resolved_at"] = now_iso()
                 state["potd_ended"] = True
                 state["notifications_suppressed"] = True
+                state["today_completed"] = True
                 state_tmp = DATA_DIR / "notifier_state.tmp"
                 with open(state_tmp, "w", encoding="utf-8") as stf:
                     json.dump(state, stf, indent=2)
@@ -1413,8 +1417,22 @@ def api_solve():
             except Exception:
                 pass
 
+        # Close any active desktop popup cards immediately
+        try:
+            from unstop_laptop_notifier import close_all_popups
+            close_all_popups()
+        except Exception:
+            pass
+
         try:
             fire_completion_notification(day, title, updated_streak, link)
+        except Exception:
+            pass
+
+        # Push immediate sync to live cloud
+        try:
+            if sync_to_cloud:
+                sync_to_cloud(force=True)
         except Exception:
             pass
 

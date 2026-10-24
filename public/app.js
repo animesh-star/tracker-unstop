@@ -593,32 +593,34 @@ async function openTaskInChrome() {
     let targetUrl = currentChallenge?.link;
     let taskTitle = currentChallenge?.title || 'Today\'s Coding Quest';
 
-    // 1. Fetch latest task of the day directly from the Vercel live website
-    try {
-      const res = await fetch('https://unstop-gold.vercel.app/api/today');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.challenge && data.challenge.link) {
-          targetUrl = data.challenge.link;
-          taskTitle = data.challenge.title || taskTitle;
-          currentChallenge = data.challenge;
+    // 1. Fetch latest task of the day directly from the Vercel live website ONLY if not solved
+    if (currentChallenge?.status !== 'solved') {
+      try {
+        const res = await fetch('https://unstop-gold.vercel.app/api/today');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.challenge && data.challenge.link && data.challenge.status !== 'solved') {
+            targetUrl = data.challenge.link;
+            taskTitle = data.challenge.title || taskTitle;
+            currentChallenge = data.challenge;
 
-          // Sync local if running local backend
-          if (API_BASE) {
-            fetch(`${API_BASE}/api/challenge/update`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                day: data.challenge.day,
-                link: data.challenge.link,
-                title: data.challenge.title
-              })
-            }).catch(() => { });
+            // Sync local if running local backend
+            if (API_BASE) {
+              fetch(`${API_BASE}/api/challenge/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  day: data.challenge.day,
+                  link: data.challenge.link,
+                  title: data.challenge.title
+                })
+              }).catch(() => { });
+            }
           }
         }
+      } catch (err) {
+        console.warn('[App] Vercel task fetch warning:', err);
       }
-    } catch (err) {
-      console.warn('[App] Vercel task fetch warning:', err);
     }
 
     const safeLink = sanitizeUrl(targetUrl || 'https://unstop.com/practice/coding');

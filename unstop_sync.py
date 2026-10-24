@@ -215,18 +215,43 @@ def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved:
         if not challenges:
             return {"synced": False, "reason": "No challenges in database"}
 
-        # Find today's challenge by matching URL, assigned_date, or pending state:
-        url_match = next((c for c in challenges if c.get("link") and c.get("link") == activity.get("url")), None)
-        date_match = next((c for c in challenges if c.get("assigned_date") == target_date), None)
+        # Check if today's challenge is already completed and solved
         today_solved = next((c for c in challenges if (c.get("solved_at") or "").split("T")[0] == target_date and c.get("status") == "solved"), None)
+        if not today_solved:
+            today_solved = next((c for c in challenges if c.get("assigned_date") == target_date and c.get("status") == "solved"), None)
+
+        if today_solved:
+            # TODAY'S TASK IS ALREADY COMPLETED & SOLVED!
+            # Never overwrite title or link of an already completed challenge.
+            return {
+                "synced": True,
+                "already_solved": True,
+                "day": today_solved.get("day"),
+                "title": today_solved.get("title"),
+                "link": today_solved.get("link")
+            }
+
+        # Find today's active pending challenge (excluding solved challenges):
+        url_match = next((c for c in challenges if c.get("link") and c.get("link") == activity.get("url") and c.get("status") != "solved"), None)
+        date_match = next((c for c in challenges if c.get("assigned_date") == target_date and c.get("status") != "solved"), None)
         pending = next((c for c in challenges if c.get("status") in ("pending", "upcoming") and (not c.get("assigned_date") or c.get("assigned_date") <= target_date)), None)
         if not pending:
             pending = next((c for c in challenges if c.get("status") in ("pending", "upcoming")), None)
 
-        target_challenge = url_match or date_match or today_solved or pending or challenges[-1]
+        target_challenge = url_match or date_match or pending or challenges[-1]
 
         day = target_challenge.get("day", 1)
         was_already_solved = (target_challenge.get("status") == "solved")
+
+        # If target challenge is already solved, protect its data from mutations
+        if was_already_solved:
+            return {
+                "synced": True,
+                "already_solved": True,
+                "day": day,
+                "title": target_challenge.get("title"),
+                "link": target_challenge.get("link")
+            }
 
         # Update problem details with actual fetched specific challenge title & url from Unstop
         if activity.get('title') and activity['title'] not in ("Unstop", "Unstop Coding Challenge"):
@@ -384,15 +409,17 @@ def fetch_today_task_from_vercel() -> Optional[Dict[str, Any]]:
                             updated = False
                             for c in db.get("challenges", []):
                                 if c.get("day") == c_day:
-                                    if c_link and c.get("link") != c_link:
-                                        c["link"] = c_link
-                                        updated = True
-                                    if c_title and c.get("title") != c_title:
-                                        c["title"] = c_title
-                                        updated = True
+                                    # Never overwrite link or title of an already completed/solved task
+                                    if c.get("status") != "solved":
+                                        if c_link and c.get("link") != c_link:
+                                            c["link"] = c_link
+                                            updated = True
+                                        if c_title and c.get("title") != c_title:
+                                            c["title"] = c_title
+                                            updated = True
                                     if c_status == "solved" and c.get("status") != "solved":
                                         c["status"] = "solved"
-                                        c["solved_at"] = cloud_challenge.get("solved_at")
+                                        c["solved_at"] = cloud_challenge.get("solved_at") or datetime.now(IST).isoformat()
                                         updated = True
                                     break
                             if updated:
@@ -407,6 +434,26 @@ def fetch_today_task_from_vercel() -> Optional[Dict[str, Any]]:
                                 print(f"☁️ [Cloud Sync] Synced new task from Vercel for Day {c_day}: {c_title} -> {c_link}")
                         except Exception as ex:
                             print(f"Error updating local DB from Vercel: {ex}")
+
+                # If solved on Vercel, suppress local notifications and close popups
+                if c_status == "solved":
+                    try:
+                        from unstop_laptop_notifier import close_all_popups
+                        close_all_popups()
+                    except Exception:
+                        pass
+                    state_file = DATA_DIR / "notifier_state.json"
+                    if state_file.exists():
+                        try:
+                            with open(state_file, "r", encoding="utf-8") as sf:
+                                st = json.load(sf)
+                            st["last_first_open_date"] = today_date_str()
+                            st["notifications_suppressed"] = True
+                            st["today_completed"] = True
+                            with open(state_file, "w", encoding="utf-8") as sf:
+                                json.dump(st, sf, indent=2)
+                        except Exception:
+                            pass
                 return cloud_challenge
     except Exception as e:
         print(f"Notice fetching from Vercel: {e}")

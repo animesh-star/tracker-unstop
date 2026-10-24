@@ -420,6 +420,13 @@ function updateChallengeStatus(day, status) {
         state.today_completed = true;
         fs.writeFileSync(stateFile, JSON.stringify(state, null, 2), 'utf8');
       } catch {}
+      if (process.platform === 'win32') {
+        try {
+          const { spawn } = require('child_process');
+          const psCmd = 'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*unstop_laptop_notifier.py*--popup-data*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }';
+          spawn('powershell.exe', ['-NoProfile', '-Command', psCmd], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+        } catch {}
+      }
     }
     writeDB(db);
     evaluateAndUpdateMissedDays();

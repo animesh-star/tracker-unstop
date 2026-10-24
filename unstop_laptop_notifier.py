@@ -53,11 +53,12 @@ if ENV_FILE.exists():
 IST = timezone(timedelta(hours=5, minutes=30))
 
 try:
-    from unstop_sync import auto_sync_and_mark_completed, fetch_unstop_activity_for_date, fetch_today_task_from_vercel
+    from unstop_sync import auto_sync_and_mark_completed, fetch_unstop_activity_for_date, fetch_today_task_from_vercel, sync_to_cloud
 except ImportError:
     auto_sync_and_mark_completed = None
     fetch_unstop_activity_for_date = None
     fetch_today_task_from_vercel = None
+    sync_to_cloud = None
 
 popup_active = False
 popup_lock = threading.Lock()
@@ -580,10 +581,16 @@ def is_notification_allowed(force: bool = False) -> tuple:
     if is_today_completed():
         return False, f"Today ({today}) challenge is already COMPLETED. All notifications suppressed."
 
-    # Check state file
+    # Check state file and auto-reset stale completion flags from past dates
     state = load_notifier_state()
-    if state.get("today_completed") and state.get("last_first_open_date") == today:
-        return False, f"Today ({today}) marked completed in state. All notifications suppressed."
+    if state.get("today_completed"):
+        resolved_date = (state.get("first_open_resolved_at") or "").split("T")[0]
+        if resolved_date != today or not is_today_completed():
+            state["today_completed"] = False
+            state["notifications_suppressed"] = False
+            save_notifier_state(state)
+        else:
+            return False, f"Today ({today}) marked completed. All notifications suppressed."
 
     # Rule 2: Ensure today's challenge is active and check status
     ensure_today_challenge_activated()
@@ -945,20 +952,21 @@ def show_gui_popup(
             except Exception:
                 pass
             target_link = link
-            # Always ensure we open the newest task of that day from Vercel live website
-            try:
-                if fetch_today_task_from_vercel:
-                    v_task = fetch_today_task_from_vercel()
-                    if v_task and v_task.get("link"):
-                        target_link = v_task.get("link")
-                else:
-                    v_res = requests.get("https://unstop-gold.vercel.app/api/today", timeout=3)
-                    if v_res.status_code == 200:
-                        v_task = v_res.json().get("challenge", {})
+            # Only refresh link from Vercel if challenge is NOT yet solved
+            if status != "solved":
+                try:
+                    if fetch_today_task_from_vercel:
+                        v_task = fetch_today_task_from_vercel()
                         if v_task and v_task.get("link"):
                             target_link = v_task.get("link")
-            except Exception as e:
-                print(f"Notice fetching from Vercel on open: {e}")
+                    else:
+                        v_res = requests.get("https://unstop-gold.vercel.app/api/today", timeout=3)
+                        if v_res.status_code == 200:
+                            v_task = v_res.json().get("challenge", {})
+                            if v_task and v_task.get("link"):
+                                target_link = v_task.get("link")
+                except Exception as e:
+                    print(f"Notice fetching from Vercel on open: {e}")
 
             if not target_link:
                 target_link = "https://unstop.com/practice/coding"
@@ -993,8 +1001,7 @@ def show_gui_popup(
                             success = True
                             break
                     if success:
-                        with open(DB_PATH, "w", encoding="utf-8") as f:
-                            json.dump(db, f, indent=2)
+                        save_db(db)
                 except Exception as ex:
                     print(f"Direct DB solve error: {ex}")
 
@@ -1005,6 +1012,12 @@ def show_gui_popup(
                 state["notifications_suppressed"] = True
                 state["today_completed"] = True
                 save_notifier_state(state)
+                # Immediately push to Vercel live cloud
+                try:
+                    if sync_to_cloud:
+                        sync_to_cloud(force=True)
+                except Exception:
+                    pass
             root.after(300, close_win)
 
         def snooze():
@@ -1098,7 +1111,22 @@ def show_gui_popup(
                         return
                 except Exception:
                     pass
-            root.after(3500, poll_auto_solved)
+            if fetch_today_task_from_vercel:
+                try:
+                    v_task = fetch_today_task_from_vercel()
+                    if v_task and v_task.get("status") == "solved":
+                        day_lbl.config(text=f"✅ {v_task.get('title', title)} [SOLVED]", fg="#10b981")
+                        desc_lbl.config(text="🎉 Task completed on live website! Closing alert now...", fg="#a7f3d0")
+                        for widget in btn_row.winfo_children():
+                            widget.pack_forget()
+                        auto_badge = tk.Label(btn_row, text="✨ COMPLETED ON LIVE SITE • SOLVED!", font=("Segoe UI", 9, "bold"), fg="#10b981", bg="#131a2e")
+                        auto_badge.pack(side="left", pady=4)
+                        root.after(1500, close_win)
+                        return
+                except Exception:
+                    pass
+
+            root.after(2500, poll_auto_solved)
 
         root.after(3500, poll_auto_solved)
 
@@ -1298,12 +1326,20 @@ def ntfy_stream_listener():
             time.sleep(10)
 
 def background_auto_sync_loop():
-    """Independent background auto-sync thread so browser history queries never block the wake timer."""
+    """Independent background auto-sync thread so browser history queries, live links, and cloud sync stay live."""
     while True:
         try:
-            time.sleep(60)
-            if auto_sync_and_mark_completed:
-                auto_sync_and_mark_completed()
+            time.sleep(15)
+            # 1. If today's challenge is completed, ensure popups are closed and notifications suppressed
+            if is_today_completed():
+                close_all_popups()
+            else:
+                # 2. Live sync from browser history while challenge is active (links and titles)
+                if auto_sync_and_mark_completed:
+                    auto_sync_and_mark_completed()
+                # 3. Live sync latest problem details from Vercel
+                if fetch_today_task_from_vercel:
+                    fetch_today_task_from_vercel()
         except Exception:
             time.sleep(15)
 
