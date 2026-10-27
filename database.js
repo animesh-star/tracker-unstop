@@ -589,8 +589,34 @@ function setUserProfile(profile) {
 function get30DayRoadmap() {
   const db = readDB();
   const current = getOrCreateTodayChallenge();
-  const challengesMap = new Map(db.challenges.map(c => [c.day, c]));
+  const stats = getStats();
+  const streak = stats.streak || 0;
+  const isBroken = Boolean(stats.is_broken || (stats.streak_breaks && stats.streak_breaks.length > 0) || stats.total_streak_breaks > 0);
 
+  // If a streak break occurred, 30-Day Path of Mastery restarts automatically from Day 1!
+  if (isBroken) {
+    const todaySolved = current && current.status === 'solved';
+    const roadmap = [];
+    for (let step = 1; step <= 30; step++) {
+      let status = 'upcoming';
+      if (step <= streak) {
+        status = 'solved';
+      } else if (step === streak + 1 && !todaySolved) {
+        status = 'pending';
+      }
+      roadmap.push({
+        id: step,
+        day: step,
+        title: `Day ${step}: Streak Run Challenge`,
+        link: current?.link || 'https://unstop.com/practice/coding',
+        status: status,
+        solved_at: step <= streak ? (current?.solved_at || nowISO()) : null,
+      });
+    }
+    return roadmap;
+  }
+
+  const challengesMap = new Map(db.challenges.map(c => [c.day, c]));
   const roadmap = [];
   for (let d = 1; d <= 30; d++) {
     if (challengesMap.has(d)) {

@@ -169,7 +169,7 @@ async function loadData(silent = false) {
     renderWeeklyCalendar(challenges, challenge);
     renderMilestone(stats);
     renderTodayCard(challenge, stats, user);
-    renderPathGrid(challenges, challenge);
+    renderPathGrid(challenges, challenge, stats);
     renderHistory(challenges);
 
     const liveBadge = document.getElementById('live-sync-badge');
@@ -476,64 +476,168 @@ function renderTodayCard(challenge, stats, user) {
   }
 }
 
-// ─── 3. Duolingo Stepping Stones Map ───────────────────────────────────────────
-function renderPathGrid(challenges = [], current) {
+// ─── 3. Duolingo Stepping Stones Map (Automatically Restarts from Day 1 on Break) ──
+let pathViewMode = 'run'; // 'run' (active streak run starting from Day 1) or 'all' (all-time map)
+let cachedChallenges = [];
+let cachedCurrent = null;
+let cachedStats = null;
+
+function togglePathView() {
+  pathViewMode = pathViewMode === 'run' ? 'all' : 'run';
+  const btn = document.getElementById('btn-toggle-path-view');
+  if (btn) {
+    btn.innerHTML = pathViewMode === 'run' ? '🔥 Current Run (Day 1-30)' : '📜 All-Time Map';
+  }
+  renderPathGrid(cachedChallenges, cachedCurrent, cachedStats);
+}
+
+function renderPathGrid(challenges = [], current, stats = null) {
+  cachedChallenges = challenges;
+  cachedCurrent = current;
+  cachedStats = stats;
+
   const container = document.getElementById('duo-path-grid');
   const solvedCountEl = document.getElementById('path-solved-count');
+  const subEl = document.getElementById('path-section-sub');
+  const toggleBtn = document.getElementById('btn-toggle-path-view');
   if (!container) return;
   container.innerHTML = '';
 
-  const solvedDays = new Set(challenges.filter(c => c.status === 'solved').map(c => c.day));
-  const missedDays = new Set(challenges.filter(c => c.status === 'missed').map(c => c.day));
-  const currentDay = current?.day || 1;
+  const streak = stats?.streak || 0;
+  const isTodaySolved = current && current.status === 'solved';
+  const hasBroken = Boolean(
+    stats?.is_broken ||
+    (stats?.streak_breaks && stats.streak_breaks.length > 0) ||
+    (stats?.total_streak_breaks && stats.total_streak_breaks > 0) ||
+    (stats?.last_broken_streak && stats.last_broken_streak > 0)
+  );
 
-  if (solvedCountEl) {
-    solvedCountEl.textContent = solvedDays.size;
+  // If the streak broke, Path of Mastery restarts automatically from Day 1!
+  const showRestartedRun = hasBroken && pathViewMode !== 'all';
+
+  if (toggleBtn) {
+    toggleBtn.style.display = hasBroken ? 'inline-flex' : 'none';
+    toggleBtn.innerHTML = showRestartedRun ? '🔥 Current Run (Day 1-30)' : '📜 All-Time Map';
   }
 
-  for (let d = 1; d <= 30; d++) {
-    const match = challenges.find(c => c.day === d);
-    const node = document.createElement('div');
-    node.className = 'stone-node';
-
-    const circle = document.createElement('div');
-    circle.className = 'stone-circle';
-
-    const questTitle = match?.title || `Day ${d} Coding Challenge`;
-
-    if (solvedDays.has(d)) {
-      circle.classList.add('stone-solved');
-      circle.innerHTML = '✅';
-      node.title = `Day ${d}: Solved! (${questTitle})`;
-    } else if (missedDays.has(d)) {
-      circle.classList.add('stone-missed');
-      circle.innerHTML = '💔';
-      node.title = `Day ${d}: Missed! (${questTitle})`;
-    } else if (d === currentDay) {
-      circle.classList.add('stone-active');
-      circle.innerHTML = '⚡';
-      node.title = `Day ${d}: Active Today! (${questTitle})`;
-    } else {
-      circle.classList.add('stone-locked');
-      circle.innerHTML = `<span style="font-size:0.9rem; opacity:0.6;">🔒</span>`;
-      node.title = `Day ${d}: ${questTitle}`;
+  if (showRestartedRun) {
+    if (solvedCountEl) {
+      solvedCountEl.textContent = streak;
+    }
+    if (subEl) {
+      subEl.innerHTML = `🔄 <strong>Streak Restarted:</strong> Starting from <strong>Day 1</strong> of your 30-day journey. Active Streak: <strong>${streak} Day${streak === 1 ? '' : 's'}</strong> • Previous Best Record: <strong>${stats?.best_streak || 18}d</strong>`;
     }
 
-    const label = document.createElement('span');
-    label.className = 'stone-day-label';
-    label.textContent = `Day ${d}`;
+    for (let step = 1; step <= 30; step++) {
+      const node = document.createElement('div');
+      node.className = 'stone-node';
 
-    node.onclick = () => {
-      if (match && match.link) {
-        window.open(match.link, '_blank', 'noopener,noreferrer');
+      const circle = document.createElement('div');
+      circle.className = 'stone-circle';
+
+      if (step <= streak) {
+        // Solved in current active streak run
+        circle.classList.add('stone-solved');
+        circle.innerHTML = '✅';
+        node.title = `Streak Day ${step}: Solved! (${step === streak && current ? current.title : 'Challenge Completed'})`;
+        node.onclick = () => {
+          if (current?.link) {
+            window.open(current.link, '_blank', 'noopener,noreferrer');
+          } else {
+            window.open('https://unstop.com/practice/coding', '_blank', 'noopener,noreferrer');
+          }
+        };
+      } else if (step === streak + 1 && !isTodaySolved) {
+        // Active today (pending challenge to advance the streak!)
+        circle.classList.add('stone-active');
+        circle.innerHTML = '⚡';
+        node.title = `Streak Day ${step}: Active Today! (${current?.title || "Today's Quest"})`;
+        node.onclick = () => {
+          scrollToQuest();
+        };
+      } else if (step === streak + 1 && isTodaySolved) {
+        // Solved today, next streak stone unlocks tomorrow
+        circle.classList.add('stone-locked');
+        circle.innerHTML = `<span style="font-size:0.9rem; opacity:0.8;">⏳</span>`;
+        node.title = `Streak Day ${step}: Unlocks Tomorrow at Midnight! Complete to advance streak to ${step} Days.`;
+        node.onclick = () => {
+          showToast(`⏳ Streak Day ${step} unlocks tomorrow at midnight! Complete it to keep your flame alive.`, 'info');
+        };
       } else {
-        window.open('https://unstop.com/practice/coding', '_blank', 'noopener,noreferrer');
+        // Future locked stones
+        circle.classList.add('stone-locked');
+        circle.innerHTML = `<span style="font-size:0.9rem; opacity:0.6;">🔒</span>`;
+        node.title = `Streak Day ${step}: Locked (Reach Day ${step - 1} first)`;
+        node.onclick = () => {
+          showToast(`🔒 Locked. Complete Day ${step - 1} to reach this stone!`, 'info');
+        };
       }
-    };
 
-    node.appendChild(circle);
-    node.appendChild(label);
-    container.appendChild(node);
+      const label = document.createElement('span');
+      label.className = 'stone-day-label';
+      label.textContent = `Day ${step}`;
+
+      node.appendChild(circle);
+      node.appendChild(label);
+      container.appendChild(node);
+    }
+  } else {
+    // All-time historical map view
+    const solvedDays = new Set(challenges.filter(c => c.status === 'solved').map(c => c.day));
+    const missedDays = new Set(challenges.filter(c => c.status === 'missed').map(c => c.day));
+    const currentDay = current?.day || 1;
+
+    if (solvedCountEl) {
+      solvedCountEl.textContent = solvedDays.size;
+    }
+    if (subEl) {
+      subEl.textContent = 'Step-by-step roadmap. Complete each day to unlock the full 30-day champion trophy!';
+    }
+
+    for (let d = 1; d <= 30; d++) {
+      const match = challenges.find(c => c.day === d);
+      const node = document.createElement('div');
+      node.className = 'stone-node';
+
+      const circle = document.createElement('div');
+      circle.className = 'stone-circle';
+
+      const questTitle = match?.title || `Day ${d} Coding Challenge`;
+
+      if (solvedDays.has(d)) {
+        circle.classList.add('stone-solved');
+        circle.innerHTML = '✅';
+        node.title = `Day ${d}: Solved! (${questTitle})`;
+      } else if (missedDays.has(d)) {
+        circle.classList.add('stone-missed');
+        circle.innerHTML = '💔';
+        node.title = `Day ${d}: Missed! (${questTitle})`;
+      } else if (d === currentDay) {
+        circle.classList.add('stone-active');
+        circle.innerHTML = '⚡';
+        node.title = `Day ${d}: Active Today! (${questTitle})`;
+      } else {
+        circle.classList.add('stone-locked');
+        circle.innerHTML = `<span style="font-size:0.9rem; opacity:0.6;">🔒</span>`;
+        node.title = `Day ${d}: ${questTitle}`;
+      }
+
+      const label = document.createElement('span');
+      label.className = 'stone-day-label';
+      label.textContent = `Day ${d}`;
+
+      node.onclick = () => {
+        if (match && match.link) {
+          window.open(match.link, '_blank', 'noopener,noreferrer');
+        } else {
+          window.open('https://unstop.com/practice/coding', '_blank', 'noopener,noreferrer');
+        }
+      };
+
+      node.appendChild(circle);
+      node.appendChild(label);
+      container.appendChild(node);
+    }
   }
 }
 

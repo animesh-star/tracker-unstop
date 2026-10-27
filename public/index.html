@@ -205,10 +205,15 @@
       <div class="path-header">
         <div class="path-title-wrap">
           <h2 class="section-title">🗺️ 30-Day Path of Mastery</h2>
-          <p class="section-sub">Step-by-step roadmap. Complete each day to unlock the full 30-day champion trophy!</p>
+          <p class="section-sub" id="path-section-sub">Step-by-step roadmap. Complete each day to unlock the full 30-day champion trophy!</p>
         </div>
-        <div class="path-overall-stat">
-          <span class="stat-highlight" id="path-solved-count">1</span> / 30 Solved
+        <div class="path-header-right">
+          <div class="path-overall-stat">
+            <span class="stat-highlight" id="path-solved-count">1</span> / 30 Solved
+          </div>
+          <button id="btn-toggle-path-view" class="btn-path-toggle" onclick="togglePathView()" title="Toggle between current streak run and all-time map">
+            🔥 Current Run (Day 1-30)
+          </button>
         </div>
       </div>
 

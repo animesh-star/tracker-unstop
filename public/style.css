@@ -719,6 +719,12 @@ body {
   color: var(--text-2);
 }
 
+.path-header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
 .path-overall-stat {
   font-size: 0.95rem;
   font-weight: 800;
@@ -728,6 +734,28 @@ body {
 .stat-highlight {
   color: var(--duo-orange);
   font-size: 1.2rem;
+}
+
+.btn-path-toggle {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #f1f5f9;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-path-toggle:hover {
+  background: rgba(255, 150, 0, 0.15);
+  border-color: var(--duo-orange);
+  color: var(--duo-orange);
+  transform: translateY(-1px);
 }
 
 /* The Stepping Stone Grid */

@@ -563,8 +563,35 @@ def get_30_day_roadmap() -> List[Dict[str, Any]]:
     evaluate_and_update_missed_days()
     db = read_db()
     current = get_or_create_today_challenge()
-    cmap = {c.get("day"): c for c in db.get("challenges", [])}
+    stats = get_stats()
+    streak = stats.get("streak", 0)
+    streak_breaks = stats.get("streak_breaks", [])
+    is_broken = stats.get("is_broken", False) or len(streak_breaks) > 0 or stats.get("total_streak_breaks", 0) > 0
 
+    # If a streak break occurred, 30-Day Path of Mastery restarts automatically from Day 1!
+    if is_broken:
+        today_solved = current.get("status") == "solved"
+        roadmap = []
+        for step in range(1, 31):
+            if step <= streak:
+                status = "solved"
+            elif step == streak + 1 and not today_solved:
+                status = "pending"
+            else:
+                status = "upcoming"
+            roadmap.append({
+                "id": step,
+                "day": step,
+                "title": f"Day {step}: Streak Run Challenge",
+                "link": current.get("link") or "https://unstop.com/practice/coding",
+                "status": status,
+                "solved_at": current.get("solved_at") if step <= streak else None,
+                "created_at": None,
+                "reminded_at": None
+            })
+        return roadmap
+
+    cmap = {c.get("day"): c for c in db.get("challenges", [])}
     roadmap = []
     for d in range(1, 31):
         if d in cmap:
