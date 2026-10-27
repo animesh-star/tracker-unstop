@@ -1401,6 +1401,109 @@ def api_vapid_key():
     key = os.getenv("VAPID_PUBLIC_KEY") or db.get("settings", {}).get("vapid_public") or ""
     return {"publicKey": key}
 
+# ─── Unstop Login, Logout & Live Tracking Endpoints ───────────────────────────
+class UnstopAuthRequest(BaseModel):
+    username: Optional[str] = "animegos31002"
+    userId: Optional[str] = None
+    email: Optional[str] = "animesh.goswami045@gmail.com"
+    name: Optional[str] = "Animesh Goswami"
+    profileUrl: Optional[str] = None
+    practiceUrl: Optional[str] = None
+    liveTracking: Optional[bool] = True
+
+@app.get("/api/auth/status")
+@app.get("/api/auth/me")
+def api_auth_status():
+    db = read_db()
+    profile = get_user_profile()
+    is_authenticated = bool(profile.get("authenticated", True) or db.get("settings", {}).get("unstop_authenticated") == "true")
+    stats = get_stats()
+    challenge = get_or_create_today_challenge()
+    return {
+        "authenticated": is_authenticated,
+        "authMethod": profile.get("authMethod", "unstop"),
+        "email": profile.get("email", "animesh.goswami045@gmail.com"),
+        "username": profile.get("username", "animegos31002"),
+        "user": profile,
+        "liveTracking": is_authenticated,
+        "todaySolved": challenge.get("status") == "solved",
+        "challenge": challenge,
+        "stats": stats
+    }
+
+@app.post("/api/auth/login")
+@app.post("/api/auth/unstop")
+@app.post("/api/auth/google")
+def api_auth_login(payload: Optional[UnstopAuthRequest] = None):
+    db = read_db()
+    current = get_user_profile()
+    data = payload.dict() if payload else {}
+    raw_user = (data.get("username") or data.get("userId") or current.get("username", "animegos31002")).lstrip("@").strip()
+    username = sanitize_text(raw_user, 50)
+    email = sanitize_text((data.get("email") or current.get("email", "animesh.goswami045@gmail.com")).strip().lower(), 100)
+    name = sanitize_text(data.get("name") or current.get("name", "Animesh Goswami"), 80)
+    profile_url = sanitize_url(data.get("profileUrl") or f"https://unstop.com/u/{username}") or current.get("profileUrl")
+
+    updated_profile = {
+        **current,
+        "name": name,
+        "username": username,
+        "email": email,
+        "profileUrl": profile_url,
+        "authenticated": True,
+        "authMethod": "unstop",
+        "authenticatedAt": now_iso(),
+        "liveTracking": True,
+        "unstopVerified": True
+    }
+    set_user_profile(updated_profile)
+    settings = db.setdefault("settings", {})
+    settings["unstop_authenticated"] = "true"
+    settings["unstop_auth_user"] = username
+    settings["unstop_auth_email"] = email
+    settings["unstop_auth_at"] = now_iso()
+    write_db(db)
+
+    return {
+        "success": True,
+        "message": f"Successfully connected Unstop account @{username} ({email})!",
+        "user": updated_profile,
+        "liveTracking": True
+    }
+
+@app.post("/api/auth/logout")
+def api_auth_logout():
+    db = read_db()
+    current = get_user_profile()
+    updated_profile = {
+        **current,
+        "authenticated": False,
+        "liveTracking": False
+    }
+    set_user_profile(updated_profile)
+    settings = db.setdefault("settings", {})
+    settings["unstop_authenticated"] = "false"
+    write_db(db)
+    return {"success": True, "message": "Disconnected from Unstop"}
+
+@app.post("/api/unstop/live-track")
+def api_unstop_live_track():
+    if auto_sync_and_mark_completed:
+        try:
+            auto_sync_and_mark_completed()
+        except Exception:
+            pass
+    auth_status = api_auth_status()
+    return {
+        "success": True,
+        "authenticated": auth_status["authenticated"],
+        "user": auth_status["user"],
+        "liveTracking": True,
+        "syncedAt": now_iso(),
+        "challenge": auth_status["challenge"],
+        "stats": auth_status["stats"]
+    }
+
 # ─── Protected Routes (Requires verify_api_key) ────────────────────────────────
 
 @app.post("/api/solve", dependencies=[Depends(verify_api_key)])

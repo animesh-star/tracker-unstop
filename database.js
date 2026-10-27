@@ -56,6 +56,10 @@ const DEFAULT_USER = {
   profileUrl: 'https://unstop.com/u/animegos31002',
   practiceUrl: 'https://unstop.com/practice/coding',
   ntfyTopic: 'animesh_unstop_streak',
+  authenticated: true,
+  authMethod: 'unstop',
+  liveTracking: true,
+  unstopVerified: true,
 };
 
 const DEFAULT_DB = {
@@ -703,6 +707,80 @@ function syncDatabase(incoming) {
   return db;
 }
 
+function loginUnstopUser(authData) {
+  if (!authData || typeof authData !== 'object') {
+    return { success: false, error: 'Invalid login details' };
+  }
+
+  const current = getUserProfile();
+  const rawUsername = (authData.username || authData.userId || current.username || 'animegos31002').replace(/^@/, '').trim();
+  const username = sanitizeText(rawUsername, 50);
+  const rawEmail = (authData.email || current.email || 'animesh.goswami045@gmail.com').trim().toLowerCase();
+  const email = sanitizeText(rawEmail, 100);
+  const name = sanitizeText(authData.name || current.name || 'Animesh Goswami', 80);
+  const profileUrl = sanitizeUrl(authData.profileUrl || `https://unstop.com/u/${username}`) || current.profileUrl;
+  const practiceUrl = sanitizeUrl(authData.practiceUrl || 'https://unstop.com/practice/coding');
+
+  const updatedProfile = {
+    ...current,
+    name,
+    username,
+    email,
+    profileUrl,
+    practiceUrl,
+    authenticated: true,
+    authMethod: 'unstop',
+    authenticatedAt: nowISO(),
+    liveTracking: true,
+    unstopVerified: true,
+  };
+
+  setUserProfile(updatedProfile);
+  setSetting('unstop_authenticated', 'true');
+  setSetting('unstop_auth_user', username);
+  setSetting('unstop_auth_email', email);
+  setSetting('unstop_auth_at', nowISO());
+
+  return {
+    success: true,
+    message: `Successfully connected Unstop account @${username} (${email})!`,
+    user: updatedProfile,
+    liveTracking: true,
+  };
+}
+
+function logoutUnstopUser() {
+  const current = getUserProfile();
+  const updated = {
+    ...current,
+    authenticated: false,
+    liveTracking: false,
+  };
+  setUserProfile(updated);
+  setSetting('unstop_authenticated', 'false');
+  return { success: true, message: 'Disconnected from Unstop' };
+}
+
+function getAuthStatus() {
+  const profile = getUserProfile();
+  const authSetting = getSetting('unstop_authenticated');
+  const isAuthenticated = Boolean(profile.authenticated || authSetting === 'true');
+  const stats = getStats();
+  const challenge = getOrCreateTodayChallenge();
+
+  return {
+    authenticated: isAuthenticated,
+    authMethod: profile.authMethod || (isAuthenticated ? 'unstop' : null),
+    email: profile.email || 'animesh.goswami045@gmail.com',
+    username: profile.username || 'animegos31002',
+    user: profile,
+    liveTracking: isAuthenticated,
+    todaySolved: challenge ? challenge.status === 'solved' : false,
+    challenge,
+    stats,
+  };
+}
+
 module.exports = {
   getTodayChallenge,
   getOrCreateTodayChallenge,
@@ -723,6 +801,9 @@ module.exports = {
   getCurrentDay,
   getUserProfile,
   setUserProfile,
+  loginUnstopUser,
+  logoutUnstopUser,
+  getAuthStatus,
   createDailyBackup,
   sanitizeUrl,
   sanitizeText,

@@ -45,6 +45,12 @@
           <span id="live-sync-label">Live Sync: Active</span>
         </div>
 
+        <!-- Unstop Connect / Login / Logout Button -->
+        <button id="btn-unstop-auth" class="btn btn-unstop-auth" onclick="handleAuthButtonClick()" title="Unstop Account Connection & Live Tracking">
+          <span class="unstop-badge-icon">⚡</span>
+          <span id="unstop-auth-label">Connect Unstop</span>
+        </button>
+
         <div id="notif-status" class="notif-badge notif-off">
           <span class="notif-dot"></span>
           <span id="notif-label">Notifications Off</span>
@@ -57,6 +63,25 @@
   </header>
 
   <main class="main">
+
+    <!-- Live Connected Unstop Account Banner -->
+    <div class="unstop-live-bar" id="unstop-live-bar">
+      <div class="live-pulse-container">
+        <span class="live-dot-pulse"></span>
+        <span class="live-text" id="live-text">Live Unstop Tracking: Connected with <strong>@animegos31002</strong> (Animesh Goswami)</span>
+      </div>
+      <div class="live-actions">
+        <button class="btn-live-sync" onclick="triggerLiveUnstopSync()" title="Force real-time sync with Unstop">
+          🔄 Sync Live
+        </button>
+        <button class="btn-live-auth" onclick="openAuthModal()" title="View Unstop Connection Details">
+          ⚙️ Account
+        </button>
+        <button class="btn-live-logout" onclick="logoutUnstop()" title="Logout and disconnect Unstop account">
+          🚪 Logout
+        </button>
+      </div>
+    </div>
 
     <!-- Pre-Break Streak Warning Banner -->
     <div class="streak-warning-banner" id="streak-warning-banner" style="display:none;">
@@ -295,6 +320,63 @@
       <div class="modal-actions">
         <button class="btn btn-primary" id="modal-open-btn" onclick="openChallengeFromModal()">🚀 Open Challenge</button>
         <button class="btn btn-ghost" onclick="closeModal()">Later</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unstop Account Login / Logout Modal -->
+  <div class="modal-overlay" id="unstop-auth-modal" style="display:none">
+    <div class="modal-card auth-modal-card">
+      <div class="modal-header-row">
+        <div class="modal-icon-small">⚡</div>
+        <div>
+          <h2 class="modal-title" style="margin:0; font-size:1.3rem;">Connect Unstop Account</h2>
+          <p class="auth-header-desc">Link your Unstop ID to track your live POTD completions, streak, and stats in real time on this website.</p>
+        </div>
+      </div>
+
+      <!-- Quick 1-Click Authenticate Card -->
+      <div class="auth-quick-card">
+        <div class="auth-account-info">
+          <div class="auth-avatar">AG</div>
+          <div class="auth-account-meta">
+            <span class="auth-account-name">Animesh Goswami</span>
+            <span class="auth-account-email">animesh.goswami045@gmail.com</span>
+            <span class="auth-unstop-tag">Unstop Handle: @animegos31002</span>
+          </div>
+        </div>
+        <button class="btn btn-unstop-quick" onclick="quickLoginUnstop()">
+          <span>⚡ One-Click Login as @animegos31002</span>
+        </button>
+      </div>
+
+      <!-- Live Features Highlights -->
+      <div class="auth-features-list">
+        <div class="auth-feat"><span class="feat-check">✓</span> <span>Tracks Unstop POTD and practice problem completions live in real time.</span></div>
+        <div class="auth-feat"><span class="feat-check">✓</span> <span>Syncs seamlessly between Vercel Cloud (<a href="https://unstop-gold.vercel.app" target="_blank" style="color:var(--duo-blue)">unstop-gold.vercel.app</a>) and your laptop.</span></div>
+        <div class="auth-feat"><span class="feat-check">✓</span> <span>Automatically restarts 30-day Path of Mastery from Day 1 on any streak break.</span></div>
+      </div>
+
+      <!-- Custom Account Form -->
+      <div class="auth-divider"><span>OR CONNECT CUSTOM UNSTOP ID</span></div>
+
+      <div class="auth-custom-form">
+        <div class="form-group">
+          <label class="form-label">Unstop User ID or Profile URL</label>
+          <input type="text" id="auth-input-username" class="form-input" placeholder="e.g. animegos31002 or https://unstop.com/u/animegos31002" value="animegos31002" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email Address (Gmail ID)</label>
+          <input type="email" id="auth-input-email" class="form-input" placeholder="e.g. animesh.goswami045@gmail.com" value="animesh.goswami045@gmail.com" />
+        </div>
+        <button class="btn btn-primary btn-block" onclick="submitCustomLogin()">
+          🔗 Login &amp; Track Account
+        </button>
+      </div>
+
+      <div class="modal-actions" style="margin-top:16px; display:flex; justify-content:space-between;">
+        <button class="btn btn-ghost" onclick="closeAuthModal()">Close</button>
+        <button class="btn btn-ghost" style="color:#ef4444" onclick="logoutUnstop()">🚪 Logout / Disconnect</button>
       </div>
     </div>
   </div>

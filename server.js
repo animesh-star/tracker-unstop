@@ -379,6 +379,59 @@ app.get('/api/roadmap', (req, res) => {
   res.json({ roadmap, stats, user });
 });
 
+// ─── Unstop Login, Logout & Account Connection Endpoints ──────────────────────
+app.get('/api/auth/status', (req, res) => {
+  res.json(db.getAuthStatus());
+});
+
+app.get('/api/auth/me', (req, res) => {
+  res.json(db.getAuthStatus());
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const result = db.loginUnstopUser(req.body);
+  if (!result.success) {
+    return res.status(400).json(result);
+  }
+  res.json(result);
+});
+
+app.post('/api/auth/unstop', (req, res) => {
+  const result = db.loginUnstopUser(req.body);
+  if (!result.success) return res.status(400).json(result);
+  res.json(result);
+});
+
+app.post('/api/auth/google', (req, res) => {
+  const result = db.loginUnstopUser(req.body);
+  if (!result.success) return res.status(400).json(result);
+  res.json(result);
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const result = db.logoutUnstopUser();
+  res.json(result);
+});
+
+app.post('/api/unstop/live-track', async (req, res) => {
+  try {
+    const auth = db.getAuthStatus();
+    const challenge = db.getOrCreateTodayChallenge();
+    const stats = db.getStats();
+    res.json({
+      success: true,
+      authenticated: auth.authenticated,
+      user: auth.user,
+      liveTracking: true,
+      syncedAt: new Date().toISOString(),
+      challenge,
+      stats,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Protected Mutation Endpoints (requireAuth + sensitiveActionLimiter) ───────
 
 app.post('/api/solve', sensitiveActionLimiter, requireAuth, async (req, res) => {

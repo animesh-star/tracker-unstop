@@ -40,11 +40,12 @@ function escapeHtml(str) {
 // ─── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await registerServiceWorker();
+  await loadAuthStatus();
   await loadData();
   updateNextReminderTime();
   setInterval(updateNextReminderTime, 60_000);
-  // Auto-sync polling every 12 seconds for seamless live tracking
-  setInterval(() => loadData(true), 12_000);
+  // Auto-sync polling every 10 seconds for seamless live tracking
+  setInterval(() => loadData(true), 10_000);
 });
 
 // ─── Service Worker Registration ──────────────────────────────────────────────
@@ -994,6 +995,239 @@ async function triggerFirstOpenTest() {
     }
   } catch (err) {
     showToast('❌ Server error: ' + err.message, 'error');
+  }
+}
+
+// ─── Unstop Account Login, Logout & Live Tracking ─────────────────────────────
+let currentAuthData = {
+  authenticated: true,
+  username: 'animegos31002',
+  email: 'animesh.goswami045@gmail.com',
+  name: 'Animesh Goswami',
+  liveTracking: true
+};
+
+async function loadAuthStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/status`);
+    if (res.ok) {
+      const data = await res.json();
+      currentAuthData = data;
+      renderAuthUI(data);
+    } else {
+      renderAuthUI(currentAuthData);
+    }
+  } catch (e) {
+    console.warn('[Auth] Status fetch fallback to default:', e.message);
+    renderAuthUI(currentAuthData);
+  }
+}
+
+function renderAuthUI(data) {
+  const btnAuth = document.getElementById('btn-unstop-auth');
+  const authLabel = document.getElementById('unstop-auth-label');
+  const liveBar = document.getElementById('unstop-live-bar');
+  const liveText = document.getElementById('live-text');
+  const liveSyncBadge = document.getElementById('live-sync-badge');
+  const liveSyncLabel = document.getElementById('live-sync-label');
+  const userPill = document.getElementById('user-pill');
+  const userName = document.getElementById('user-name');
+  const userTag = document.getElementById('user-tag');
+
+  const isAuthed = Boolean(data && data.authenticated);
+
+  if (isAuthed) {
+    const handle = data.username || data.user?.username || 'animegos31002';
+    const name = data.name || data.user?.name || 'Animesh Goswami';
+
+    if (btnAuth) {
+      btnAuth.classList.add('btn-auth-connected');
+      btnAuth.title = `Connected as @${handle} (${name}) — Click to manage account or logout`;
+    }
+    if (authLabel) {
+      authLabel.textContent = `@${handle} (Connected)`;
+    }
+    if (liveBar) {
+      liveBar.style.display = 'flex';
+    }
+    if (liveText) {
+      liveText.innerHTML = `Live Unstop Tracking: Connected with <strong>@${escapeHtml(handle)}</strong> (${escapeHtml(name)})`;
+    }
+    if (liveSyncBadge) {
+      liveSyncBadge.className = 'notif-badge notif-on';
+    }
+    if (liveSyncLabel) {
+      liveSyncLabel.textContent = 'Live Sync: Active';
+    }
+    if (userName) userName.textContent = name;
+    if (userTag) userTag.textContent = `@${handle}`;
+    if (userPill) userPill.href = `https://unstop.com/u/${encodeURIComponent(handle)}`;
+  } else {
+    if (btnAuth) {
+      btnAuth.classList.remove('btn-auth-connected');
+      btnAuth.title = 'Click to Login and connect your Unstop Account';
+    }
+    if (authLabel) {
+      authLabel.textContent = 'Connect Unstop';
+    }
+    if (liveBar) {
+      liveBar.style.display = 'none';
+    }
+    if (liveSyncBadge) {
+      liveSyncBadge.className = 'notif-badge notif-off';
+    }
+    if (liveSyncLabel) {
+      liveSyncLabel.textContent = 'Live Sync: Paused';
+    }
+  }
+}
+
+function handleAuthButtonClick() {
+  openAuthModal();
+}
+
+function openAuthModal() {
+  const modal = document.getElementById('unstop-auth-modal');
+  if (modal) {
+    modal.style.display = 'flex';
+    const inputUser = document.getElementById('auth-input-username');
+    const inputEmail = document.getElementById('auth-input-email');
+    if (inputUser && currentAuthData) {
+      inputUser.value = currentAuthData.username || currentAuthData.user?.username || 'animegos31002';
+    }
+    if (inputEmail && currentAuthData) {
+      inputEmail.value = currentAuthData.email || currentAuthData.user?.email || 'animesh.goswami045@gmail.com';
+    }
+  }
+}
+
+function closeAuthModal() {
+  const modal = document.getElementById('unstop-auth-modal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+async function quickLoginUnstop() {
+  try {
+    showToast('⚡ Connecting to Unstop account @animegos31002...', 'info');
+    const res = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: 'animegos31002',
+        email: 'animesh.goswami045@gmail.com',
+        name: 'Animesh Goswami',
+        liveTracking: true
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      currentAuthData = {
+        authenticated: true,
+        username: data.user.username,
+        email: data.user.email,
+        name: data.user.name,
+        user: data.user,
+        liveTracking: true
+      };
+      renderAuthUI(currentAuthData);
+      showToast('🎉 Connected with Unstop (@animegos31002)! Live tracking active.', 'success');
+      closeAuthModal();
+      await loadData();
+    } else {
+      showToast('❌ Login error: ' + (data.error || 'Failed to connect Unstop'), 'error');
+    }
+  } catch (err) {
+    showToast('❌ Login error: ' + err.message, 'error');
+  }
+}
+
+async function submitCustomLogin() {
+  const userInput = document.getElementById('auth-input-username');
+  const emailInput = document.getElementById('auth-input-email');
+  let rawUsername = userInput ? userInput.value.trim() : '';
+  const email = emailInput ? emailInput.value.trim() : '';
+
+  if (rawUsername.includes('/u/')) {
+    rawUsername = rawUsername.split('/u/')[1].split('/')[0];
+  }
+  const username = rawUsername.replace(/^@/, '').trim();
+
+  if (!username) {
+    showToast('⚠️ Please enter your Unstop username or profile link', 'warning');
+    return;
+  }
+
+  try {
+    showToast(`🔗 Connecting @${username} to website...`, 'info');
+    const res = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: username,
+        email: email || `${username}@gmail.com`,
+        name: username,
+        liveTracking: true
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      currentAuthData = {
+        authenticated: true,
+        username: data.user.username,
+        email: data.user.email,
+        name: data.user.name,
+        user: data.user,
+        liveTracking: true
+      };
+      renderAuthUI(currentAuthData);
+      showToast(`✅ Unstop Account @${username} connected!`, 'success');
+      closeAuthModal();
+      await loadData();
+    } else {
+      showToast('❌ Error: ' + (data.error || 'Could not connect Unstop ID'), 'error');
+    }
+  } catch (err) {
+    showToast('❌ Server error: ' + err.message, 'error');
+  }
+}
+
+async function logoutUnstop() {
+  try {
+    showToast('Logging out from Unstop...', 'info');
+    const res = await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      currentAuthData = { authenticated: false };
+      renderAuthUI(currentAuthData);
+      showToast('🚪 Logged out from Unstop account.', 'info');
+      closeAuthModal();
+    } else {
+      showToast('❌ Logout error: ' + (data.error || 'Could not logout'), 'error');
+    }
+  } catch (err) {
+    showToast('❌ Server error: ' + err.message, 'error');
+  }
+}
+
+async function triggerLiveUnstopSync() {
+  try {
+    showToast('⚡ Connecting to Unstop live servers...', 'info');
+    const res = await fetch(`${API_BASE}/api/unstop/live-track`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast('🌟 Unstop Live Sync Complete! Challenges & streak refreshed.', 'success');
+      await loadData();
+    } else {
+      showToast('⚠️ Sync status: ' + (data.message || data.error || 'Completed with warnings'), 'warning');
+      await loadData();
+    }
+  } catch (err) {
+    showToast('❌ Sync error: ' + err.message, 'error');
   }
 }
 

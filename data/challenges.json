@@ -451,6 +451,10 @@
     "last_broken_day": 19,
     "total_streak_breaks": 1,
     "streak_status": "active",
-    "is_broken": false
+    "is_broken": false,
+    "unstop_authenticated": "true",
+    "unstop_auth_user": "animegos31002",
+    "unstop_auth_email": "animesh.goswami045@gmail.com",
+    "unstop_auth_at": "2026-10-27T16:16:44.436598+05:30"
   }
 }
