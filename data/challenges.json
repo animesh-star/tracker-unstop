@@ -215,25 +215,25 @@
     {
       "id": 1789449575917,
       "day": 19,
-      "title": "Day 19: Rosewood Returns Cart",
+      "title": "Day 19 Coding Challenge",
+      "link": "https://unstop.com/practice/coding",
+      "status": "missed",
+      "reminded_at": null,
+      "solved_at": null,
+      "created_at": "2026-09-15T05:19:35.900Z",
+      "assigned_date": "2026-10-26",
+      "missed_at": "2026-10-27T00:00:00.000000+05:30"
+    },
+    {
+      "id": 1789449575918,
+      "day": 20,
+      "title": "Day 20: Rosewood Returns Cart",
       "link": "https://unstop.com/code/practice/670074",
       "status": "solved",
       "reminded_at": null,
       "solved_at": "2026-10-27T12:53:54.851529+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
       "assigned_date": "2026-10-27",
-      "missed_at": null
-    },
-    {
-      "id": 1789449575918,
-      "day": 20,
-      "title": "Day 20: Graph Representation & Breadth First Search (BFS)",
-      "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
-      "created_at": "2026-09-15T05:19:35.900Z",
-      "assigned_date": null,
       "missed_at": null
     },
     {
@@ -434,13 +434,22 @@
   "settings": {
     "vapid_public": "BEkJiWkYZt3cbogZU3vUJ9XoozgZuO1dZ0Hp2UdOplJAmtbAbpbxq9pXW_DT0vvi8RZKKyKn9XMSHRNg6j4sdpI",
     "vapid_private": "vwbhT59yt85TIgT8UGqAQIdJevuVioGk-L0YTMPdykc",
-    "best_streak": 19,
+    "best_streak": 18,
     "notify_on_complete": false,
-    "streak_breaks": [],
-    "last_broken_streak": null,
-    "last_broken_at": null,
-    "last_broken_day": null,
-    "total_streak_breaks": 0,
+    "streak_breaks": [
+      {
+        "id": 1,
+        "day": 19,
+        "streak_lost": 18,
+        "broken_at": "2026-10-27T00:00:00.000000+05:30",
+        "missed_date": "2026-10-26",
+        "reason": "Streak of 18 days broken on 26th Oct 2026 (Day 19 missed at midnight)"
+      }
+    ],
+    "last_broken_streak": 18,
+    "last_broken_at": "2026-10-27T00:00:00.000000+05:30",
+    "last_broken_day": 19,
+    "total_streak_breaks": 1,
     "streak_status": "active",
     "is_broken": false
   }
