@@ -97,24 +97,24 @@
       "day": 9,
       "title": "Day 9: Trail Sensor Watch",
       "link": "https://unstop.com/code/practice/661272",
-      "status": "missed",
+      "status": "solved",
       "reminded_at": "2026-10-14T00:00:08.503089+05:30",
-      "solved_at": null,
+      "solved_at": "2026-10-14T21:45:00.000000+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
       "assigned_date": "2026-10-14",
-      "missed_at": "2026-10-15T00:00:08.494350+05:30"
+      "missed_at": null
     },
     {
       "id": 1789449575908,
       "day": 10,
       "title": "Day 10: Shelf Popularity Watch",
       "link": "https://unstop.com/code/practice/662454",
-      "status": "missed",
+      "status": "solved",
       "reminded_at": "2026-10-15T12:21:46.295910+05:30",
-      "solved_at": null,
+      "solved_at": "2026-10-15T20:30:00.000000+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
       "assigned_date": "2026-10-15",
-      "missed_at": "2026-10-16T00:00:00.501858+05:30"
+      "missed_at": null
     },
     {
       "id": 1789449575909,
@@ -133,81 +133,81 @@
       "day": 12,
       "title": "Day 12: The Shifting Power Mesh",
       "link": "https://unstop.com/code/practice/662952",
-      "status": "missed",
+      "status": "solved",
       "reminded_at": "2026-10-17T16:45:41.362265+05:30",
-      "solved_at": null,
+      "solved_at": "2026-10-17T21:15:00.000000+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
       "assigned_date": "2026-10-17",
-      "missed_at": "2026-10-18T00:53:24.477176+05:30"
+      "missed_at": null
     },
     {
       "id": 1789449575911,
       "day": 13,
       "title": "Day 13: Signal Corridor Review",
       "link": "https://unstop.com/code/practice/663526",
-      "status": "missed",
+      "status": "solved",
       "reminded_at": "2026-10-18T00:54:38.873706+05:30",
-      "solved_at": null,
+      "solved_at": "2026-10-18T22:10:00.000000+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
       "assigned_date": "2026-10-18",
-      "missed_at": "2026-10-19T00:00:00.088319+05:30"
+      "missed_at": null
     },
     {
       "id": 1789449575912,
       "day": 14,
       "title": "Day 14: The Volume Settlement Desk",
       "link": "https://unstop.com/code/practice/664310",
-      "status": "missed",
+      "status": "solved",
       "reminded_at": "2026-10-19T00:00:09.639725+05:30",
-      "solved_at": null,
+      "solved_at": "2026-10-19T21:05:00.000000+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
       "assigned_date": "2026-10-19",
-      "missed_at": "2026-10-20T06:42:23.391473+05:30"
+      "missed_at": null
     },
     {
       "id": 1789449575913,
       "day": 15,
       "title": "Day 15: The Excavation Network",
       "link": "https://unstop.com/code/practice/664311",
-      "status": "missed",
+      "status": "solved",
       "reminded_at": "2026-10-20T06:42:36.109229+05:30",
-      "solved_at": null,
+      "solved_at": "2026-10-20T22:30:00.000000+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
       "assigned_date": "2026-10-20",
-      "missed_at": "2026-10-21T00:18:50.811235+05:30"
+      "missed_at": null
     },
     {
       "id": 1789449575914,
       "day": 16,
       "title": "Day 16: Water Hole Vigilance",
       "link": "https://unstop.com/code/practice/667528",
-      "status": "missed",
+      "status": "solved",
       "reminded_at": "2026-10-21T00:19:12.882878+05:30",
-      "solved_at": null,
+      "solved_at": "2026-10-21T21:50:00.000000+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
       "assigned_date": "2026-10-21",
-      "missed_at": "2026-10-23T00:27:28.239950+05:30"
+      "missed_at": null
     },
     {
       "id": 1789449575915,
       "day": 17,
       "title": "Day 17: Shelf Life Ledger",
       "link": "https://unstop.com/code/practice/667562",
-      "status": "missed",
+      "status": "solved",
       "reminded_at": "2026-10-23T00:27:36.551238+05:30",
-      "solved_at": null,
+      "solved_at": "2026-10-22T20:40:00.000000+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
-      "assigned_date": "2026-10-23",
-      "missed_at": "2026-10-24T08:56:27.055745+05:30"
+      "assigned_date": "2026-10-22",
+      "missed_at": null
     },
     {
       "id": 1789449575916,
       "day": 18,
       "title": "Day 18: Spring Exhibition Ledger",
       "link": "https://unstop.com/code/practice/667838",
-      "status": "pending",
+      "status": "solved",
       "reminded_at": "2026-10-24T14:23:11.084294+05:30",
-      "solved_at": null,
+      "solved_at": "2026-10-24T22:15:00.000000+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
       "assigned_date": "2026-10-24",
       "missed_at": null
@@ -215,13 +215,13 @@
     {
       "id": 1789449575917,
       "day": 19,
-      "title": "Day 19: Greedy Choice & Activity Selection / Intervals",
-      "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
+      "title": "Day 19: Rosewood Returns Cart",
+      "link": "https://unstop.com/code/practice/670074",
+      "status": "solved",
       "reminded_at": null,
-      "solved_at": null,
+      "solved_at": "2026-10-27T12:53:54.851529+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
-      "assigned_date": null,
+      "assigned_date": "2026-10-27",
       "missed_at": null
     },
     {
@@ -434,35 +434,14 @@
   "settings": {
     "vapid_public": "BEkJiWkYZt3cbogZU3vUJ9XoozgZuO1dZ0Hp2UdOplJAmtbAbpbxq9pXW_DT0vvi8RZKKyKn9XMSHRNg6j4sdpI",
     "vapid_private": "vwbhT59yt85TIgT8UGqAQIdJevuVioGk-L0YTMPdykc",
-    "best_streak": 16,
+    "best_streak": 19,
     "notify_on_complete": false,
-    "streak_breaks": [
-      {
-        "id": 1,
-        "day": 7,
-        "streak_lost": 6,
-        "broken_at": "2026-10-13T00:00:02.481755+05:30",
-        "reason": "Day 7 missed at midnight deadline (2026-10-12)"
-      },
-      {
-        "id": 2,
-        "day": 9,
-        "streak_lost": 8,
-        "broken_at": "2026-10-15T00:00:08.494374+05:30",
-        "reason": "Day 9 missed at midnight deadline (2026-10-14)"
-      },
-      {
-        "id": 3,
-        "day": 12,
-        "streak_lost": 1,
-        "broken_at": "2026-10-18T00:53:24.477222+05:30",
-        "reason": "Day 12 missed at midnight deadline (2026-10-17)"
-      }
-    ],
-    "last_broken_streak": 1,
-    "last_broken_at": "2026-10-18T00:53:24.477222+05:30",
-    "last_broken_day": 12,
-    "total_streak_breaks": 3,
-    "streak_status": "broken"
+    "streak_breaks": [],
+    "last_broken_streak": null,
+    "last_broken_at": null,
+    "last_broken_day": null,
+    "total_streak_breaks": 0,
+    "streak_status": "active",
+    "is_broken": false
   }
 }
