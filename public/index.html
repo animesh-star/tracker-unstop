@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
   <!-- Background Ambient Orbs -->
@@ -117,17 +117,22 @@
           </div>
         </div>
 
-        <!-- Extended Stats Bar (Current, Best, Solved, Missed) -->
+        <!-- Extended Stats Bar (Current Streak, Max Streak, Streak Status, Solved, Missed) -->
         <div class="duo-stats-row">
           <div class="duo-stat-pill">
             <span class="stat-icon">🔥</span>
             <span class="stat-val" id="stat-current-streak">0</span>
-            <span class="stat-lbl">Active Streak</span>
+            <span class="stat-lbl">Current Streak</span>
           </div>
           <div class="duo-stat-pill">
             <span class="stat-icon">🏆</span>
             <span class="stat-val" id="stat-best-streak">0</span>
-            <span class="stat-lbl">Best Streak</span>
+            <span class="stat-lbl">Max Streak</span>
+          </div>
+          <div class="duo-stat-pill" id="stat-pill-status">
+            <span class="stat-icon" id="stat-status-icon">⚡</span>
+            <span class="stat-val" id="stat-streak-status">ACTIVE</span>
+            <span class="stat-lbl">Streak Status</span>
           </div>
           <div class="duo-stat-pill">
             <span class="stat-icon">✅</span>
@@ -138,6 +143,22 @@
             <span class="stat-icon">💔</span>
             <span class="stat-val" id="stat-missed-count">0</span>
             <span class="stat-lbl">Missed</span>
+          </div>
+        </div>
+
+        <!-- Live Tracked Practice Platform Banner -->
+        <div class="live-tracked-platform-bar" id="live-tracked-platform-bar">
+          <div class="platform-bar-left">
+            <span class="platform-bar-icon">🎯</span>
+            <div class="platform-bar-info">
+              <span class="platform-bar-label">Live Tracked Target Platform:</span>
+              <a class="platform-bar-link" id="platform-bar-link" href="https://unstop.com/practice/coding" target="_blank" rel="noopener">
+                Coding Practice Platform for Placements & Interviews ↗
+              </a>
+            </div>
+          </div>
+          <div class="platform-bar-right">
+            <span class="platform-streak-badge" id="platform-streak-badge">🔥 Tracking Live</span>
           </div>
         </div>
 
@@ -287,12 +308,22 @@
 
     <!-- 5. Challenge History Table -->
     <section class="history-section">
-      <h2 class="section-title">📜 Quest Records</h2>
+      <div class="path-header" style="margin-bottom: 1rem;">
+        <div class="path-title-wrap">
+          <h2 class="section-title" style="margin-bottom: 0.25rem;">📜 Quest Records</h2>
+          <p class="section-sub" id="history-section-sub">Active 30-day quest journey starting from streak reset (Day 1-30).</p>
+        </div>
+        <div class="path-header-right">
+          <button id="btn-toggle-history-view" class="btn-path-toggle" onclick="toggleHistoryView()" title="Toggle between current streak run and all-time history">
+            🔥 Current Run (Day 1-30)
+          </button>
+        </div>
+      </div>
       <div class="history-table-wrapper">
         <table class="history-table">
           <thead>
             <tr>
-              <th>Day</th>
+              <th id="th-day-label">Day</th>
               <th>Quest Title</th>
               <th>Status</th>
               <th>Completed At</th>
@@ -381,6 +412,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

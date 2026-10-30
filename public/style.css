@@ -1515,3 +1515,128 @@ body {
   flex-direction: column;
   gap: 12px;
 }
+
+/* Stats row with Current Streak, Max Streak, Status, Solved, Missed */
+.duo-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.duo-stat-pill {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.duo-stat-pill:hover {
+  background: rgba(255, 255, 255, 0.07);
+  transform: translateY(-2px);
+  border-color: rgba(255, 150, 0, 0.4);
+}
+
+.duo-stat-pill .stat-icon {
+  font-size: 1.25rem;
+}
+
+.duo-stat-pill .stat-val {
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: var(--text);
+  line-height: 1.1;
+}
+
+.duo-stat-pill .stat-lbl {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-3);
+}
+
+/* Live Tracked Platform Banner */
+.live-tracked-platform-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: linear-gradient(135deg, rgba(0, 115, 230, 0.12), rgba(15, 23, 42, 0.7));
+  border: 1.5px solid rgba(0, 115, 230, 0.35);
+  border-radius: var(--radius);
+  padding: 12px 18px;
+  margin-bottom: 20px;
+}
+
+.platform-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.platform-bar-icon {
+  font-size: 1.4rem;
+}
+
+.platform-bar-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.platform-bar-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-3);
+}
+
+.platform-bar-link {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #38bdf8;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.platform-bar-link:hover {
+  color: #7dd3fc;
+  text-decoration: underline;
+}
+
+.platform-streak-badge {
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 150, 0, 0.15);
+  border: 1px solid rgba(255, 150, 0, 0.35);
+  color: #ffd900;
+}
+
+.platform-streak-badge.badge-active {
+  background: rgba(88, 204, 2, 0.15);
+  border-color: rgba(88, 204, 2, 0.35);
+  color: #58cc02;
+}
+
+.platform-streak-badge.badge-broken {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #ef4444;
+}
+
+.platform-streak-badge.badge-risk {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #f59e0b;
+}

@@ -402,8 +402,8 @@ def calculate_all_time_best_streak(db: Dict[str, Any]) -> int:
                 max_streak = current_run
         else:
             current_run = 0
-    saved_best = db.get("settings", {}).get("best_streak", 16)
-    return max(max_streak, saved_best, 16)
+    saved_best = db.get("settings", {}).get("best_streak", 20)
+    return max(max_streak, saved_best, 20)
 
 def get_streak_chain_details(db: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -507,7 +507,7 @@ def get_stats() -> Dict[str, Any]:
     streak_info = get_streak_chain_details(db)
     streak = streak_info["streak"]
     remaining = streak_info["remaining"] # Resets to 30 when streak breaks, else 30 - streak
-    best_streak = max(calculate_all_time_best_streak(db), settings.get("best_streak", 16), streak, 16)
+    best_streak = max(calculate_all_time_best_streak(db), settings.get("best_streak", 20), streak, 20)
 
     current = get_or_create_today_challenge()
     today_status = current.get("status") if current else "pending"
@@ -540,7 +540,9 @@ def get_stats() -> Dict[str, Any]:
         "solved": solved,
         "missed": missed,
         "streak": streak,
+        "current_streak": streak,
         "best_streak": best_streak,
+        "max_streak": best_streak,
         "remaining": remaining,
         "streak_started_day": streak_info["streak_started_day"],
         "streak_started_date": streak_info["streak_started_date"],
@@ -556,58 +558,92 @@ def get_stats() -> Dict[str, Any]:
         "streak_breaks": streak_breaks,
         "missed_days": missed_days,
         "last_solved_date": last_solved_date,
-        "recovery_day": current.get("day", 1) if current else 1
+        "recovery_day": current.get("day", 1) if current else 1,
+        "tracked_link": "https://unstop.com/practice/coding",
+        "tracked_title": "Coding Practice Platform for Placements & Interviews",
     }
 
-def get_30_day_roadmap() -> List[Dict[str, Any]]:
+def get_current_run_challenges() -> List[Dict[str, Any]]:
     evaluate_and_update_missed_days()
     db = read_db()
     current = get_or_create_today_challenge()
     stats = get_stats()
     streak = stats.get("streak", 0)
+    settings = db.get("settings", {})
     streak_breaks = stats.get("streak_breaks", [])
     is_broken = stats.get("is_broken", False) or len(streak_breaks) > 0 or stats.get("total_streak_breaks", 0) > 0
 
-    # If a streak break occurred, 30-Day Path of Mastery restarts automatically from Day 1!
-    if is_broken:
-        today_solved = current.get("status") == "solved"
+    if not is_broken:
+        cmap = {c.get("day"): c for c in db.get("challenges", [])}
         roadmap = []
-        for step in range(1, 31):
-            if step <= streak:
-                status = "solved"
-            elif step == streak + 1 and not today_solved:
-                status = "pending"
+        for d in range(1, 31):
+            if d in cmap:
+                roadmap.append(cmap[d])
             else:
-                status = "upcoming"
-            roadmap.append({
-                "id": step,
-                "day": step,
-                "title": f"Day {step}: Streak Run Challenge",
-                "link": current.get("link") or "https://unstop.com/practice/coding",
-                "status": status,
-                "solved_at": current.get("solved_at") if step <= streak else None,
-                "created_at": None,
-                "reminded_at": None
-            })
+                roadmap.append({
+                    "id": d,
+                    "day": d,
+                    "title": f"Day {d}: Coding Practice Platform for Placements & Interviews",
+                    "link": "https://unstop.com/practice/coding",
+                    "status": "missed" if d < current.get("day", 1) else "upcoming",
+                    "reminded_at": None,
+                    "solved_at": None,
+                    "created_at": None,
+                })
         return roadmap
 
+    # From where streak was broken (Day 19 on Oct 26), start next 30-day task sequence (Day 20 = Run Day 1)
+    broken_day = int(settings.get("last_broken_day", 19) or 19)
+    start_day = broken_day + 1 # e.g. Day 20
     cmap = {c.get("day"): c for c in db.get("challenges", [])}
-    roadmap = []
-    for d in range(1, 31):
-        if d in cmap:
-            roadmap.append(cmap[d])
-        else:
-            roadmap.append({
-                "id": None,
-                "day": d,
-                "title": f"Day {d} Challenge",
-                "link": None,
-                "status": "missed" if d < current.get("day", 1) else "upcoming",
-                "reminded_at": None,
-                "solved_at": None,
-                "created_at": None,
-            })
-    return roadmap
+
+    run_challenges = []
+    today_solved = current.get("status") == "solved"
+
+    for step in range(1, 31):
+        orig_day = start_day + step - 1
+        existing = cmap.get(orig_day)
+
+        status = "upcoming"
+        solved_at = None
+        title = f"Day {step}: Coding Practice Platform for Placements & Interviews"
+        link = "https://unstop.com/practice/coding"
+        assigned_date = existing.get("assigned_date") if existing else None
+
+        if existing:
+            status = existing.get("status", "upcoming")
+            solved_at = existing.get("solved_at")
+            link = existing.get("link") or link
+            raw_title = existing.get("title", "")
+            clean_name = raw_title.split(":", 1)[1].strip() if ":" in raw_title else raw_title
+            title = f"Day {step}: {clean_name}" if clean_name else f"Day {step}: Coding Practice Platform for Placements & Interviews"
+
+        if step <= streak:
+            status = "solved"
+            if not solved_at and existing and existing.get("solved_at"):
+                solved_at = existing.get("solved_at")
+        elif step == streak + 1 and not today_solved:
+            status = "pending"
+        elif step > streak:
+            status = "upcoming"
+
+        run_challenges.append({
+            "id": step,
+            "day": step,
+            "orig_day": orig_day,
+            "title": title,
+            "link": link,
+            "status": status,
+            "solved_at": solved_at,
+            "assigned_date": assigned_date,
+            "created_at": None,
+            "reminded_at": None
+        })
+
+    return run_challenges
+
+def get_30_day_roadmap() -> List[Dict[str, Any]]:
+    return get_current_run_challenges()
 
 def update_challenge_status(day: int, status: str) -> None:
     db = read_db()
@@ -1387,9 +1423,10 @@ def api_roadmap():
 def api_challenges():
     db = read_db()
     challenges = sorted(db.get("challenges", []), key=lambda x: x.get("day", 0), reverse=True)
+    current_run = get_current_run_challenges()
     stats = get_stats()
     user = get_user_profile()
-    return {"challenges": challenges, "stats": stats, "user": user}
+    return {"challenges": challenges, "currentRun": current_run, "stats": stats, "user": user}
 
 @app.get("/api/user")
 def api_get_user():
@@ -1745,6 +1782,10 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"error": "An internal server error occurred."}
     )
+
+@app.get("/")
+async def serve_index():
+    return FileResponse(PUBLIC_DIR / "index.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 # Mount static frontend
 if PUBLIC_DIR.exists():

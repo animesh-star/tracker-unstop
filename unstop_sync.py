@@ -183,12 +183,11 @@ def send_completion_notification(day: int, title: str, streak: int, challenge_li
     except Exception:
         pass
 
-def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved: bool = False) -> Dict[str, Any]:
+def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved: bool = True) -> Dict[str, Any]:
     """
     Checks if the user accessed an Unstop challenge in their browser on target_date (default today).
     - If found: Enriches challenge title and practice URL in challenges.json.
-    - Only marks 'solved' if mark_solved=True or if already solved, preventing premature
-      suppression of notifications while the task is still in progress.
+    - Marks 'solved' automatically and syncs immediately to https://unstop-gold.vercel.app/.
     Returns result dictionary.
     """
     if not target_date:
@@ -253,21 +252,11 @@ def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved:
                 "link": target_challenge.get("link")
             }
 
-        # Update problem details with actual fetched specific challenge title & url from Unstop
-        if activity.get('title') and activity['title'] not in ("Unstop", "Unstop Coding Challenge"):
-            curr_title = target_challenge.get("title", "")
-            has_specific_title = bool(curr_title and ":" in curr_title and "Coding Challenge" not in curr_title and "Coding Practice Platform" not in curr_title)
-            if activity.get("is_specific") or not has_specific_title:
-                new_title = f"Day {day}: {activity['title']}" if not activity['title'].startswith(f"Day {day}") else activity['title']
-                target_challenge["title"] = new_title
-        elif not target_challenge.get("title") or "Coding Challenge" in target_challenge.get("title"):
-            prob_id = activity.get('url', '').split('/')[-1]
-            if prob_id.isdigit():
-                target_challenge["title"] = f"Day {day}: Practice Problem #{prob_id}"
-
-        new_title = target_challenge.get("title", f"Day {day} Challenge")
-        if activity.get("is_specific") or not target_challenge.get("link"):
-            target_challenge["link"] = activity["url"]
+        ALWAYS_TRACKED_LINK = "https://unstop.com/practice/coding"
+        ALWAYS_TRACKED_TITLE = "Coding Practice Platform for Placements & Interviews"
+        new_title = f"Day {day}: {ALWAYS_TRACKED_TITLE}"
+        target_challenge["title"] = new_title
+        target_challenge["link"] = ALWAYS_TRACKED_LINK
 
         # Only change status to solved if explicitly requested
         if mark_solved and not was_already_solved:
@@ -286,7 +275,7 @@ def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved:
                 break
 
         settings = db.setdefault("settings", {})
-        settings["best_streak"] = max(settings.get("best_streak", 16), streak, 16)
+        settings["best_streak"] = max(int(settings.get("best_streak", 20) or 20), streak, 20)
 
         # Save DB atomically
         tmp_db = DATA_DIR / "challenges.tmp"
@@ -324,7 +313,7 @@ def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved:
 
         # Automatically push update to live website in background thread
         try:
-            threading.Thread(target=sync_to_cloud, daemon=True).start()
+            threading.Thread(target=sync_to_cloud, kwargs={"force": bool(newly_solved)}, daemon=True).start()
         except Exception:
             pass
 

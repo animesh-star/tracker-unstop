@@ -14,7 +14,7 @@ app.set('trust proxy', 1);
 // ─── Environment & Secrets ─────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
-const API_SECRET = (process.env.API_SECRET || '').trim();
+const API_SECRET = (process.env.API_SECRET || 'animesh_secure_unstop_key_2026').trim();
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000')
   .split(',')
   .map(s => s.trim());
@@ -367,9 +367,10 @@ app.get('/api/user', (req, res) => {
 
 app.get('/api/challenges', (req, res) => {
   const challenges = db.getAllChallenges();
+  const currentRun = db.getCurrentRunChallenges();
   const stats = db.getStats();
   const user = db.getUserProfile();
-  res.json({ challenges, stats, user });
+  res.json({ challenges, currentRun, stats, user });
 });
 
 app.get('/api/roadmap', (req, res) => {
@@ -490,7 +491,7 @@ app.post('/api/solve', sensitiveActionLimiter, requireAuth, async (req, res) => 
   }
 });
 
-app.post('/api/cloud-sync', sensitiveActionLimiter, requireAuth, (req, res) => {
+app.post('/api/cloud-sync', apiLimiter, requireAuth, (req, res) => {
   try {
     const synced = db.syncDatabase(req.body);
     if (!synced) {

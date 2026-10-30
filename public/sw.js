@@ -1,7 +1,7 @@
 // Service Worker for Unstop 30-Day Challenge Reminder
 // Handles background push notifications
 
-const CACHE_NAME = 'unstop-reminder-v2';
+const CACHE_NAME = 'unstop-reminder-v5';
 const ASSETS_TO_CACHE = ['/', '/index.html', '/style.css', '/app.js'];
 
 // ─── Install ───────────────────────────────────────────────────────────────────

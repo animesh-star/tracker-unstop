@@ -215,7 +215,7 @@
     {
       "id": 1789449575917,
       "day": 19,
-      "title": "Day 19 Coding Challenge",
+      "title": "Day 19: Coding Practice Platform for Placements & Interviews",
       "link": "https://unstop.com/practice/coding",
       "status": "missed",
       "reminded_at": null,
@@ -239,37 +239,37 @@
     {
       "id": 1789449575919,
       "day": 21,
-      "title": "Day 21: Depth First Search (DFS) & Connected Components",
+      "title": "Day 21: Coding Practice Platform for Placements & Interviews",
       "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
+      "status": "solved",
+      "reminded_at": "2026-10-28T00:00:10.073789+05:30",
+      "solved_at": "2026-10-28T19:11:53.142893+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
-      "assigned_date": null,
+      "assigned_date": "2026-10-28",
       "missed_at": null
     },
     {
       "id": 1789449575920,
       "day": 22,
-      "title": "Day 22: Topological Sorting & Directed Acyclic Graphs",
-      "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
+      "title": "Day 22: Floodgate Relief Ledger",
+      "link": "https://unstop.com/code/practice/668005",
+      "status": "solved",
+      "reminded_at": "2026-10-29T00:35:38.803577+05:30",
+      "solved_at": "2026-10-29T12:52:06.758757+05:30",
       "created_at": "2026-09-15T05:19:35.900Z",
-      "assigned_date": null,
+      "assigned_date": "2026-10-29",
       "missed_at": null
     },
     {
       "id": 1789449575921,
       "day": 23,
-      "title": "Day 23: Shortest Path on Weighted Graphs (Dijkstra)",
+      "title": "Day 23: Coding Practice Platform for Placements & Interviews",
       "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
+      "status": "pending",
+      "reminded_at": "2026-10-30T00:15:00.799293+05:30",
       "solved_at": null,
       "created_at": "2026-09-15T05:19:35.900Z",
-      "assigned_date": null,
+      "assigned_date": "2026-10-30",
       "missed_at": null
     },
     {
@@ -434,7 +434,7 @@
   "settings": {
     "vapid_public": "BEkJiWkYZt3cbogZU3vUJ9XoozgZuO1dZ0Hp2UdOplJAmtbAbpbxq9pXW_DT0vvi8RZKKyKn9XMSHRNg6j4sdpI",
     "vapid_private": "vwbhT59yt85TIgT8UGqAQIdJevuVioGk-L0YTMPdykc",
-    "best_streak": 18,
+    "best_streak": 20,
     "notify_on_complete": false,
     "streak_breaks": [
       {
@@ -455,6 +455,6 @@
     "unstop_authenticated": "true",
     "unstop_auth_user": "animegos31002",
     "unstop_auth_email": "animesh.goswami045@gmail.com",
-    "unstop_auth_at": "2026-10-27T16:16:44.436598+05:30"
+    "unstop_auth_at": "2026-10-29T12:56:05.698212+05:30"
   }
 }

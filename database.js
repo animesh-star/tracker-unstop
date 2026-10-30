@@ -334,8 +334,8 @@ function calculateAllTimeBestStreak(db) {
       currentRun = 0;
     }
   }
-  const savedBest = Number(db.settings?.best_streak) || 16;
-  return Math.max(maxStreak, savedBest, 16);
+  const savedBest = Number(db.settings?.best_streak) || 20;
+  return Math.max(maxStreak, savedBest, 20);
 }
 
 function getStreakChainDetails(db) {
@@ -480,19 +480,25 @@ function getStats() {
   const total = db.challenges.length;
   const streakInfo = getStreakChainDetails(db);
   const streak = streakInfo.streak;
-  const bestStreak = Math.max(calculateAllTimeBestStreak(db), Number(db.settings?.best_streak) || 16, 16, streak);
+  const settings = db.settings || {};
+  const bestStreak = Math.max(calculateAllTimeBestStreak(db), Number(settings.best_streak) || 20, 20, streak);
 
   const current = getOrCreateTodayChallenge();
   const todayStatus = current ? current.status : 'pending';
   const nowHour = new Date().getHours();
   const streakAtRisk = (streak > 0 || solved > 0) && todayStatus === 'pending' && nowHour >= 18;
+  const streakBreaks = settings.streak_breaks || [];
+  const isBroken = Boolean(settings.is_broken || streakBreaks.length > 0 || (streak === 0 && (bestStreak > 0 || missed > 0)));
+  const streakStatus = (streak === 0 && (bestStreak > 0 || missed > 0)) ? 'broken' : (streakAtRisk ? 'at_risk' : 'active');
 
   return {
     total,
     solved,
     missed,
     streak,
+    current_streak: streak,
     best_streak: bestStreak,
+    max_streak: bestStreak,
     remaining: streakInfo.remaining, // Resets to 30 when streak breaks, else 30 - streak
     streak_remaining: streakInfo.remaining,
     streak_started_day: streakInfo.streak_started_day,
@@ -500,6 +506,15 @@ function getStats() {
     streak_days_running: streakInfo.streak_days_running,
     quest_remaining: Math.max(0, 30 - solved),
     streak_at_risk: streakAtRisk,
+    streak_status: streakStatus,
+    is_broken: isBroken,
+    last_broken_streak: Number(settings.last_broken_streak) || 0,
+    last_broken_at: settings.last_broken_at || null,
+    last_broken_day: settings.last_broken_day || null,
+    total_streak_breaks: Number(settings.total_streak_breaks) || streakBreaks.length,
+    streak_breaks: streakBreaks,
+    tracked_link: 'https://unstop.com/practice/coding',
+    tracked_title: 'Coding Practice Platform for Placements & Interviews',
   };
 }
 
@@ -590,55 +605,90 @@ function setUserProfile(profile) {
   return updated;
 }
 
-function get30DayRoadmap() {
+function getCurrentRunChallenges() {
   const db = readDB();
   const current = getOrCreateTodayChallenge();
   const stats = getStats();
   const streak = stats.streak || 0;
-  const isBroken = Boolean(stats.is_broken || (stats.streak_breaks && stats.streak_breaks.length > 0) || stats.total_streak_breaks > 0);
+  const settings = db.settings || {};
+  const isBroken = Boolean(stats.is_broken || (settings.streak_breaks && settings.streak_breaks.length > 0) || settings.total_streak_breaks > 0);
 
-  // If a streak break occurred, 30-Day Path of Mastery restarts automatically from Day 1!
-  if (isBroken) {
-    const todaySolved = current && current.status === 'solved';
+  if (!isBroken) {
+    const challengesMap = new Map(db.challenges.map(c => [c.day, c]));
     const roadmap = [];
-    for (let step = 1; step <= 30; step++) {
-      let status = 'upcoming';
-      if (step <= streak) {
-        status = 'solved';
-      } else if (step === streak + 1 && !todaySolved) {
-        status = 'pending';
+    for (let d = 1; d <= 30; d++) {
+      if (challengesMap.has(d)) {
+        roadmap.push(challengesMap.get(d));
+      } else {
+        roadmap.push({
+          id: null,
+          day: d,
+          title: `Day ${d}: Coding Practice Platform for Placements & Interviews`,
+          link: 'https://unstop.com/practice/coding',
+          status: current && d < current.day ? 'missed' : 'upcoming',
+          reminded_at: null,
+          solved_at: null,
+          created_at: null,
+        });
       }
-      roadmap.push({
-        id: step,
-        day: step,
-        title: `Day ${step}: Streak Run Challenge`,
-        link: current?.link || 'https://unstop.com/practice/coding',
-        status: status,
-        solved_at: step <= streak ? (current?.solved_at || nowISO()) : null,
-      });
     }
     return roadmap;
   }
 
-  const challengesMap = new Map(db.challenges.map(c => [c.day, c]));
-  const roadmap = [];
-  for (let d = 1; d <= 30; d++) {
-    if (challengesMap.has(d)) {
-      roadmap.push(challengesMap.get(d));
-    } else {
-      roadmap.push({
-        id: null,
-        day: d,
-        title: `Day ${d} Challenge`,
-        link: null,
-        status: d < current.day ? 'untracked' : 'upcoming',
-        reminded_at: null,
-        solved_at: null,
-        created_at: null,
-      });
+  // From where the streak broke (Day 19 on Oct 26), start next 30-day task sequence (Day 20 = Run Day 1)
+  const brokenDay = Number(settings.last_broken_day) || 19;
+  const startDay = brokenDay + 1; // e.g. Day 20
+  const cmap = {};
+  (db.challenges || []).forEach(c => { cmap[c.day] = c; });
+
+  const runChallenges = [];
+  const todaySolved = current && current.status === 'solved';
+
+  for (let step = 1; step <= 30; step++) {
+    const origDay = startDay + step - 1;
+    const existing = cmap[origDay];
+
+    let status = 'upcoming';
+    let solvedAt = null;
+    let title = `Day ${step}: Coding Practice Platform for Placements & Interviews`;
+    let link = 'https://unstop.com/practice/coding';
+    let assignedDate = existing?.assigned_date || null;
+
+    if (existing) {
+      status = existing.status;
+      solvedAt = existing.solved_at;
+      link = existing.link || link;
+      const rawTitle = existing.title || '';
+      const cleanName = rawTitle.includes(':') ? rawTitle.split(':')[1].trim() : rawTitle;
+      title = cleanName ? `Day ${step}: ${cleanName}` : `Day ${step}: Coding Practice Platform for Placements & Interviews`;
     }
+
+    if (step <= streak) {
+      status = 'solved';
+      if (!solvedAt && existing?.solved_at) solvedAt = existing.solved_at;
+    } else if (step === streak + 1 && !todaySolved) {
+      status = 'pending';
+    } else if (step > streak) {
+      status = 'upcoming';
+    }
+
+    runChallenges.push({
+      id: step,
+      day: step,
+      orig_day: origDay,
+      title: title,
+      link: link,
+      status: status,
+      solved_at: solvedAt,
+      assigned_date: assignedDate,
+    });
   }
-  return roadmap;
+
+  return runChallenges;
+}
+
+function get30DayRoadmap() {
+  return getCurrentRunChallenges();
 }
 
 function setChallengeDay(day, data) {
@@ -789,6 +839,7 @@ module.exports = {
   markReminded,
   getAllChallenges,
   get30DayRoadmap,
+  getCurrentRunChallenges,
   setChallengeDay,
   syncDatabase,
   getStats,

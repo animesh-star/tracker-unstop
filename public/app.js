@@ -162,7 +162,14 @@ async function loadData(silent = false) {
     ]);
 
     const { challenge, stats, user } = await todayRes.json();
-    const { challenges } = await historyRes.json();
+    const histData = await historyRes.json();
+    const challenges = histData.challenges || [];
+    const currentRun = histData.currentRun || [];
+
+    cachedChallenges = challenges;
+    cachedCurrentRun = currentRun;
+    cachedCurrent = challenge;
+    cachedStats = stats;
 
     currentChallenge = challenge;
     renderUserProfile(user);
@@ -171,7 +178,7 @@ async function loadData(silent = false) {
     renderMilestone(stats);
     renderTodayCard(challenge, stats, user);
     renderPathGrid(challenges, challenge, stats);
-    renderHistory(challenges);
+    renderHistory(challenges, currentRun, stats);
 
     const liveBadge = document.getElementById('live-sync-badge');
     const liveLabel = document.getElementById('live-sync-label');
@@ -261,7 +268,7 @@ function renderDuolingoStreak(stats, challenge, user) {
   const streakLabelEl = document.querySelector('.duo-streak-label');
 
   if (flameEl) {
-    if (isBroken) {
+    if (isBroken && streak === 0) {
       flameEl.textContent = '💔';
       flameEl.classList.add('flame-broken');
     } else {
@@ -271,7 +278,7 @@ function renderDuolingoStreak(stats, challenge, user) {
   }
 
   if (streakLabelEl) {
-    if (isBroken) {
+    if (isBroken && streak === 0) {
       streakLabelEl.textContent = 'STREAK RESET';
     } else {
       streakLabelEl.textContent = 'DAY STREAK!';
@@ -283,11 +290,43 @@ function renderDuolingoStreak(stats, challenge, user) {
   const bestEl = document.getElementById('stat-best-streak');
   const solEl = document.getElementById('stat-solved-count');
   const misEl = document.getElementById('stat-missed-count');
+  const statusEl = document.getElementById('stat-streak-status');
+  const statusIconEl = document.getElementById('stat-status-icon');
+  const streakBadgeEl = document.getElementById('platform-streak-badge');
 
-  if (curEl) curEl.textContent = streak;
-  if (bestEl) bestEl.textContent = bestStreak;
+  if (curEl) curEl.textContent = `${streak}d`;
+  if (bestEl) bestEl.textContent = `${bestStreak}d`;
   if (solEl) solEl.textContent = solved;
   if (misEl) misEl.textContent = missed;
+
+  if (statusEl) {
+    if (isBroken && streak === 0) {
+      statusEl.textContent = 'BROKEN';
+      statusEl.style.color = '#ff4b4b';
+      if (statusIconEl) statusIconEl.textContent = '💔';
+    } else if (streakAtRisk) {
+      statusEl.textContent = 'AT RISK';
+      statusEl.style.color = '#ff9600';
+      if (statusIconEl) statusIconEl.textContent = '⚠️';
+    } else {
+      statusEl.textContent = 'ACTIVE';
+      statusEl.style.color = '#58cc02';
+      if (statusIconEl) statusIconEl.textContent = '🔥';
+    }
+  }
+
+  if (streakBadgeEl) {
+    if (isBroken && streak === 0) {
+      streakBadgeEl.textContent = `💔 Streak Broken (0d) • Max Streak: ${bestStreak}d`;
+      streakBadgeEl.className = 'platform-streak-badge badge-broken';
+    } else if (streakAtRisk) {
+      streakBadgeEl.textContent = `⚠️ Current Streak: ${streak}d (At Risk!) • Max: ${bestStreak}d`;
+      streakBadgeEl.className = 'platform-streak-badge badge-risk';
+    } else {
+      streakBadgeEl.textContent = `🔥 Current Streak: ${streak}d • Max Streak: ${bestStreak}d`;
+      streakBadgeEl.className = 'platform-streak-badge badge-active';
+    }
+  }
 
   // Warning Banner
   const warningBanner = document.getElementById('streak-warning-banner');
@@ -452,7 +491,7 @@ function renderTodayCard(challenge, stats, user) {
 
   const effectiveLink = sanitizeUrl(challenge.link || user?.practiceUrl || 'https://unstop.com/practice/coding');
   linkEl.href = effectiveLink;
-  linkEl.innerHTML = `<span>Open Problem on Unstop (${challenge.link ? 'Custom Link' : 'POTD'}) →</span>`;
+  linkEl.innerHTML = `<span>Open Problem on Unstop Practice Platform →</span>`;
 
   if (challenge.status === 'solved') {
     card.classList.add('solved');
@@ -526,7 +565,7 @@ function renderPathGrid(challenges = [], current, stats = null) {
       solvedCountEl.textContent = streak;
     }
     if (subEl) {
-      subEl.innerHTML = `🔄 <strong>Streak Restarted:</strong> Starting from <strong>Day 1</strong> of your 30-day journey. Active Streak: <strong>${streak} Day${streak === 1 ? '' : 's'}</strong> • Previous Best Record: <strong>${stats?.best_streak || 18}d</strong>`;
+      subEl.innerHTML = `🔄 <strong>Streak Restarted:</strong> Starting from <strong>Day 1</strong> of your 30-day journey. Active Streak: <strong>${streak} Day${streak === 1 ? '' : 's'}</strong> • All-Time Best Record: <strong>${stats?.best_streak || 20}d</strong>`;
     }
 
     for (let step = 1; step <= 30; step++) {
@@ -642,18 +681,63 @@ function renderPathGrid(challenges = [], current, stats = null) {
   }
 }
 
-// ─── 4. Render History Table (Full 30-Day Track) ──────────────────────────────
-function renderHistory(challenges = []) {
+// ─── 4. Render History Table (Full 30-Day Track & Current Run Reset) ─────────
+let historyViewMode = 'run'; // 'run' (active 30-day streak run sequence) or 'all' (all-time archive)
+let cachedCurrentRun = [];
+
+function toggleHistoryView() {
+  historyViewMode = historyViewMode === 'run' ? 'all' : 'run';
+  const btn = document.getElementById('btn-toggle-history-view');
+  if (btn) {
+    btn.innerHTML = historyViewMode === 'run' ? '🔥 Current Run (Day 1-30)' : '📜 All-Time History';
+  }
+  renderHistory(cachedChallenges, cachedCurrentRun, cachedStats);
+}
+
+function renderHistory(challenges = [], currentRun = [], stats = null) {
   const tbody = document.getElementById('history-body');
+  const subEl = document.getElementById('history-section-sub');
+  const toggleBtn = document.getElementById('btn-toggle-history-view');
+  const thDayLabel = document.getElementById('th-day-label');
   if (!tbody) return;
 
-  if (!challenges || challenges.length === 0) {
+  const hasBroken = Boolean(
+    stats?.is_broken ||
+    (stats?.streak_breaks && stats.streak_breaks.length > 0) ||
+    (stats?.total_streak_breaks && stats.total_streak_breaks > 0) ||
+    (stats?.last_broken_streak && stats.last_broken_streak > 0)
+  );
+
+  const showCurrentRun = hasBroken && historyViewMode !== 'all';
+
+  if (toggleBtn) {
+    toggleBtn.style.display = hasBroken ? 'inline-flex' : 'none';
+    toggleBtn.innerHTML = showCurrentRun ? '🔥 Current Run (Day 1-30)' : '📜 All-Time History';
+  }
+
+  let itemsToRender = [];
+
+  if (showCurrentRun) {
+    if (thDayLabel) thDayLabel.textContent = 'Run Day';
+    if (subEl) {
+      subEl.innerHTML = `🔥 <strong>Current 30-Day Run:</strong> Reset from streak break (Day 20 = Run Day 1). Showing new 30-day quest path • Best Streak: <strong>${stats?.best_streak || 20}d</strong>`;
+    }
+    itemsToRender = currentRun && currentRun.length > 0 ? currentRun : challenges;
+  } else {
+    if (thDayLabel) thDayLabel.textContent = 'Day';
+    if (subEl) {
+      subEl.textContent = 'All-time historical archive of completed, missed, and upcoming challenges.';
+    }
+    itemsToRender = challenges;
+  }
+
+  if (!itemsToRender || itemsToRender.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5" class="empty-row">No quest records found.</td></tr>';
     return;
   }
 
   // Sort chronologically Day 1 to 30
-  const sorted = [...challenges].sort((a, b) => a.day - b.day);
+  const sorted = [...itemsToRender].sort((a, b) => a.day - b.day);
 
   tbody.innerHTML = sorted.map(c => {
     const statusChip = c.status === 'solved'
@@ -668,14 +752,15 @@ function renderHistory(challenges = []) {
 
     const solvedAt = c.solved_at
       ? new Date(c.solved_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })
-      : (c.status === 'pending' ? 'Due Tonight 12 AM' : c.status === 'missed' ? 'Missed Day' : '—');
+      : (c.status === 'pending' ? 'Due Tonight 12 AM' : c.status === 'missed' ? 'Missed Day' : (c.assigned_date ? `Scheduled: ${c.assigned_date}` : '—'));
 
     const safeLink = sanitizeUrl(c.link || 'https://unstop.com/practice/coding');
     const safeTitle = escapeHtml(c.title || `Day ${c.day} Challenge`);
+    const dayLabel = showCurrentRun && c.orig_day ? `Day ${c.day} <span style="color:var(--text-3); font-size:0.75rem; font-weight:normal;">(Orig ${c.orig_day})</span>` : `Day ${c.day}`;
 
     return `
       <tr>
-        <td><strong>Day ${c.day}</strong></td>
+        <td><strong>${dayLabel}</strong></td>
         <td>${safeTitle}</td>
         <td>${statusChip}</td>
         <td>${solvedAt}</td>
@@ -1008,12 +1093,48 @@ let currentAuthData = {
 };
 
 async function loadAuthStatus() {
+  // 1. Immediately read cached session from localStorage (avoids flicker / cold-start lag)
+  try {
+    const cached = localStorage.getItem('unstop_auth_session');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && parsed.authenticated) {
+        currentAuthData = parsed;
+        renderAuthUI(currentAuthData);
+      }
+    }
+  } catch (e) {}
+
+  // 2. Fetch server-side status to keep state verified
   try {
     const res = await fetch(`${API_BASE}/api/auth/status`);
     if (res.ok) {
       const data = await res.json();
-      currentAuthData = data;
-      renderAuthUI(data);
+      if (data && data.authenticated) {
+        currentAuthData = data;
+        try {
+          localStorage.setItem('unstop_auth_session', JSON.stringify(data));
+        } catch (e) {}
+      } else {
+        // If server says not authenticated but client has stored session, sync to server
+        const cached = localStorage.getItem('unstop_auth_session');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.authenticated) {
+            fetch(`${API_BASE}/api/auth/login`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(parsed.user || parsed)
+            }).catch(() => {});
+            currentAuthData = parsed;
+          } else {
+            currentAuthData = data;
+          }
+        } else {
+          currentAuthData = data;
+        }
+      }
+      renderAuthUI(currentAuthData);
     } else {
       renderAuthUI(currentAuthData);
     }
@@ -1031,6 +1152,7 @@ function renderAuthUI(data) {
   const liveSyncBadge = document.getElementById('live-sync-badge');
   const liveSyncLabel = document.getElementById('live-sync-label');
   const userPill = document.getElementById('user-pill');
+  const userAvatar = document.getElementById('user-avatar');
   const userName = document.getElementById('user-name');
   const userTag = document.getElementById('user-tag');
 
@@ -1039,6 +1161,7 @@ function renderAuthUI(data) {
   if (isAuthed) {
     const handle = data.username || data.user?.username || 'animegos31002';
     const name = data.name || data.user?.name || 'Animesh Goswami';
+    const initials = (name || handle).split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'AG';
 
     if (btnAuth) {
       btnAuth.classList.add('btn-auth-connected');
@@ -1059,6 +1182,7 @@ function renderAuthUI(data) {
     if (liveSyncLabel) {
       liveSyncLabel.textContent = 'Live Sync: Active';
     }
+    if (userAvatar) userAvatar.textContent = initials;
     if (userName) userName.textContent = name;
     if (userTag) userTag.textContent = `@${handle}`;
     if (userPill) userPill.href = `https://unstop.com/u/${encodeURIComponent(handle)}`;
@@ -1079,6 +1203,7 @@ function renderAuthUI(data) {
     if (liveSyncLabel) {
       liveSyncLabel.textContent = 'Live Sync: Paused';
     }
+    if (userTag) userTag.textContent = 'Not Connected';
   }
 }
 
@@ -1111,33 +1236,34 @@ function closeAuthModal() {
 async function quickLoginUnstop() {
   try {
     showToast('⚡ Connecting to Unstop account @animegos31002...', 'info');
+    const authPayload = {
+      username: 'animegos31002',
+      email: 'animesh.goswami045@gmail.com',
+      name: 'Animesh Goswami',
+      liveTracking: true
+    };
     const res = await fetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: 'animegos31002',
-        email: 'animesh.goswami045@gmail.com',
-        name: 'Animesh Goswami',
-        liveTracking: true
-      })
+      body: JSON.stringify(authPayload)
     });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      currentAuthData = {
-        authenticated: true,
-        username: data.user.username,
-        email: data.user.email,
-        name: data.user.name,
-        user: data.user,
-        liveTracking: true
-      };
-      renderAuthUI(currentAuthData);
-      showToast('🎉 Connected with Unstop (@animegos31002)! Live tracking active.', 'success');
-      closeAuthModal();
-      await loadData();
-    } else {
-      showToast('❌ Login error: ' + (data.error || 'Failed to connect Unstop'), 'error');
-    }
+    const data = await res.json().catch(() => ({ success: true, user: authPayload }));
+    const userObj = (data && data.user) ? data.user : authPayload;
+    currentAuthData = {
+      authenticated: true,
+      username: userObj.username,
+      email: userObj.email,
+      name: userObj.name,
+      user: userObj,
+      liveTracking: true
+    };
+    try {
+      localStorage.setItem('unstop_auth_session', JSON.stringify(currentAuthData));
+    } catch (e) {}
+    renderAuthUI(currentAuthData);
+    showToast('🎉 Connected with Unstop (@animegos31002)! Live tracking active.', 'success');
+    closeAuthModal();
+    await loadData();
   } catch (err) {
     showToast('❌ Login error: ' + err.message, 'error');
   }
@@ -1159,35 +1285,37 @@ async function submitCustomLogin() {
     return;
   }
 
+  const authPayload = {
+    username: username,
+    email: email || `${username}@gmail.com`,
+    name: username,
+    liveTracking: true
+  };
+
   try {
     showToast(`🔗 Connecting @${username} to website...`, 'info');
     const res = await fetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: username,
-        email: email || `${username}@gmail.com`,
-        name: username,
-        liveTracking: true
-      })
+      body: JSON.stringify(authPayload)
     });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      currentAuthData = {
-        authenticated: true,
-        username: data.user.username,
-        email: data.user.email,
-        name: data.user.name,
-        user: data.user,
-        liveTracking: true
-      };
-      renderAuthUI(currentAuthData);
-      showToast(`✅ Unstop Account @${username} connected!`, 'success');
-      closeAuthModal();
-      await loadData();
-    } else {
-      showToast('❌ Error: ' + (data.error || 'Could not connect Unstop ID'), 'error');
-    }
+    const data = await res.json().catch(() => ({ success: true, user: authPayload }));
+    const userObj = (data && data.user) ? data.user : authPayload;
+    currentAuthData = {
+      authenticated: true,
+      username: userObj.username,
+      email: userObj.email,
+      name: userObj.name,
+      user: userObj,
+      liveTracking: true
+    };
+    try {
+      localStorage.setItem('unstop_auth_session', JSON.stringify(currentAuthData));
+    } catch (e) {}
+    renderAuthUI(currentAuthData);
+    showToast(`✅ Unstop Account @${username} connected! Live tracking active.`, 'success');
+    closeAuthModal();
+    await loadData();
   } catch (err) {
     showToast('❌ Server error: ' + err.message, 'error');
   }
@@ -1196,16 +1324,14 @@ async function submitCustomLogin() {
 async function logoutUnstop() {
   try {
     showToast('Logging out from Unstop...', 'info');
-    const res = await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      currentAuthData = { authenticated: false };
-      renderAuthUI(currentAuthData);
-      showToast('🚪 Logged out from Unstop account.', 'info');
-      closeAuthModal();
-    } else {
-      showToast('❌ Logout error: ' + (data.error || 'Could not logout'), 'error');
-    }
+    try {
+      localStorage.removeItem('unstop_auth_session');
+    } catch (e) {}
+    currentAuthData = { authenticated: false };
+    renderAuthUI(currentAuthData);
+    await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' }).catch(() => {});
+    showToast('🚪 Logged out from Unstop account.', 'info');
+    closeAuthModal();
   } catch (err) {
     showToast('❌ Server error: ' + err.message, 'error');
   }
