@@ -693,6 +693,64 @@ body {
   flex-wrap: wrap;
 }
 
+.solve-btn-wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-manual-hint {
+  font-size: 0.73rem;
+  color: var(--text-dim, #94a3b8);
+  opacity: 0.85;
+  text-align: center;
+}
+
+.autodetect-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  margin-top: 18px;
+  line-height: 1.4;
+  transition: all 0.3s ease;
+}
+
+.autodetect-status-pill.autodetect-active {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  color: #93c5fd;
+}
+
+.autodetect-status-pill.autodetect-solved {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #6ee7b7;
+}
+
+.autodetect-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 10px #3b82f6;
+  animation: pulse-dot 1.8s infinite ease-in-out;
+  flex-shrink: 0;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: 0.55; }
+}
+
+.autodetect-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
 /* ─── 3. Duolingo 30-Day Path of Mastery Stepping Stones ─────────────────────── */
 .path-section {
   display: flex;

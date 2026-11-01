@@ -37,6 +37,15 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+let pollIntervalId = null;
+
+function setupLivePolling(isPending) {
+  if (pollIntervalId) clearInterval(pollIntervalId);
+  // Poll faster (every 5 seconds) while pending so solves on Unstop are reflected almost instantly
+  const intervalMs = isPending ? 5000 : 15000;
+  pollIntervalId = setInterval(() => loadData(true), intervalMs);
+}
+
 // ─── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await registerServiceWorker();
@@ -44,8 +53,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadData();
   updateNextReminderTime();
   setInterval(updateNextReminderTime, 60_000);
-  // Auto-sync polling every 10 seconds for seamless live tracking
-  setInterval(() => loadData(true), 10_000);
+
+  // Instant auto-sync whenever the user switches back from Unstop to this tab
+  window.addEventListener('focus', () => {
+    loadData(true);
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      loadData(true);
+    }
+  });
 });
 
 // ─── Service Worker Registration ──────────────────────────────────────────────
@@ -211,6 +228,8 @@ async function loadData(silent = false) {
       liveBadge.className = 'notif-badge notif-on';
       if (liveLabel) liveLabel.textContent = 'Live Sync: Active';
     }
+
+    setupLivePolling(activeChallenge && activeChallenge.status !== 'solved');
 
     // Show modal only if pending after midnight
     if (challenge && challenge.status === 'pending' && challenge.reminded_at) {
@@ -552,6 +571,10 @@ function renderTodayCard(challenge, stats, user) {
   linkEl.href = effectiveLink;
   linkEl.innerHTML = `<span>Open Problem on Unstop Practice Platform →</span>`;
 
+  const autoDetectPill = document.getElementById('autodetect-status');
+  const autoDetectText = document.getElementById('autodetect-text');
+  const manualHint = document.getElementById('manual-solve-hint');
+
   if (activeChallenge.status === 'solved') {
     card.classList.add('solved');
     card.classList.remove('pending');
@@ -562,6 +585,14 @@ function renderTodayCard(challenge, stats, user) {
     solveBtn.className = 'btn btn-solved btn-large';
     solveBtn.disabled = true;
     stopCountdown();
+
+    if (autoDetectPill && autoDetectText) {
+      autoDetectPill.className = 'autodetect-status-pill autodetect-solved';
+      autoDetectText.innerHTML = `🌟 <strong>Auto-Detected & Verified:</strong> Your Unstop practice completion was detected automatically! Streak is protected.`;
+    }
+    if (manualHint) {
+      manualHint.style.display = 'none';
+    }
   } else {
     card.classList.add('pending');
     card.classList.remove('solved');
@@ -572,6 +603,15 @@ function renderTodayCard(challenge, stats, user) {
     solveBtn.className = 'btn btn-duo-green btn-large';
     solveBtn.disabled = false;
     solveBtn.onclick = markSolved;
+
+    if (autoDetectPill && autoDetectText) {
+      autoDetectPill.className = 'autodetect-status-pill autodetect-active';
+      autoDetectText.innerHTML = `⚡ <strong>Live Auto-Detection Active:</strong> Complete this challenge on Unstop and it will automatically be detected & marked solved — no need to click!`;
+    }
+    if (manualHint) {
+      manualHint.style.display = 'block';
+      manualHint.textContent = 'Optional • Auto-detects on Unstop';
+    }
   }
 }
 

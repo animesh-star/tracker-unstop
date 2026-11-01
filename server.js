@@ -414,7 +414,7 @@ app.post('/api/auth/logout', (req, res) => {
   res.json(result);
 });
 
-app.post('/api/unstop/live-track', async (req, res) => {
+app.all(['/api/unstop/live-track', '/api/sync'], async (req, res) => {
   try {
     const auth = db.getAuthStatus();
     const challenge = db.getOrCreateTodayChallenge();
@@ -424,6 +424,7 @@ app.post('/api/unstop/live-track', async (req, res) => {
       authenticated: auth.authenticated,
       user: auth.user,
       liveTracking: true,
+      autoDetectActive: true,
       syncedAt: new Date().toISOString(),
       challenge,
       stats,

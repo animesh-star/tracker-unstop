@@ -1334,19 +1334,20 @@ def background_auto_sync_loop():
     """Independent background auto-sync thread so browser history queries, live links, and cloud sync stay live."""
     while True:
         try:
-            time.sleep(15)
             # 1. If today's challenge is completed, ensure popups are closed and notifications suppressed
             if is_today_completed():
                 close_all_popups()
+                time.sleep(20)
             else:
-                # 2. Live sync from browser history while challenge is active (links and titles)
+                # 2. Live sync from browser history while challenge is active (auto-detects completion on Unstop)
                 if auto_sync_and_mark_completed:
                     auto_sync_and_mark_completed()
                 # 3. Live sync latest problem details from Vercel
                 if fetch_today_task_from_vercel:
                     fetch_today_task_from_vercel()
+                time.sleep(8)
         except Exception:
-            time.sleep(15)
+            time.sleep(10)
 
 def periodic_wake_checker():
     """

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
   <!-- Background Ambient Orbs -->
@@ -232,13 +232,24 @@
             <span class="btn-icon">🚀</span>
             <span>Complete This in Chrome</span>
           </button>
-          <button id="btn-solve" class="btn btn-duo-green btn-large" onclick="markSolved()">
-            <span class="btn-icon">✅</span>
-            <span>Mark as Solved!</span>
-          </button>
+          <div class="solve-btn-wrapper">
+            <button id="btn-solve" class="btn btn-duo-green btn-large" onclick="markSolved()">
+              <span class="btn-icon">✅</span>
+              <span>Mark as Solved!</span>
+            </button>
+            <span class="btn-manual-hint" id="manual-solve-hint">Optional • Auto-detects on Unstop</span>
+          </div>
           <button class="btn btn-ghost" onclick="toggleForm()">
             ✏️ Edit Link
           </button>
+        </div>
+
+        <!-- Real-time Auto-Detection Status Pill -->
+        <div class="autodetect-status-pill autodetect-active" id="autodetect-status">
+          <span class="autodetect-dot"></span>
+          <span class="autodetect-text" id="autodetect-text">
+            ⚡ <strong>Live Auto-Detection Active:</strong> Completing this challenge on Unstop will automatically detect and mark it as solved — you never have to click to prove it!
+          </span>
         </div>
 
         <!-- Confetti burst on solve -->
@@ -412,6 +423,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>
