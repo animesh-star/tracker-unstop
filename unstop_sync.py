@@ -230,14 +230,18 @@ def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved:
                 "link": today_solved.get("link")
             }
 
-        # Find today's active pending challenge (excluding solved challenges):
-        url_match = next((c for c in challenges if c.get("link") and c.get("link") == activity.get("url") and c.get("status") != "solved"), None)
-        date_match = next((c for c in challenges if c.get("assigned_date") == target_date and c.get("status") != "solved"), None)
-        pending = next((c for c in challenges if c.get("status") in ("pending", "upcoming") and (not c.get("assigned_date") or c.get("assigned_date") <= target_date)), None)
-        if not pending:
-            pending = next((c for c in challenges if c.get("status") in ("pending", "upcoming")), None)
+        broken_day = int(db.get("settings", {}).get("last_broken_day", 19) or 19)
+        # Old data prior to streak break must NEVER be matched or shown as today's quest
+        active_challenges = [c for c in challenges if c.get("day", 0) > broken_day] if broken_day > 0 else challenges
 
-        target_challenge = url_match or date_match or pending or challenges[-1]
+        # Find today's active pending challenge (strictly excluding missed, past, and solved challenges):
+        date_match = next((c for c in active_challenges if c.get("assigned_date") == target_date and c.get("status") in ("pending", "upcoming")), None)
+        pending = next((c for c in active_challenges if c.get("status") == "pending"), None)
+        if not pending:
+            pending = next((c for c in active_challenges if c.get("status") == "upcoming" and (not c.get("assigned_date") or c.get("assigned_date") <= target_date)), None)
+        url_match = next((c for c in active_challenges if c.get("link") and c.get("link") == activity.get("url") and c.get("status") in ("pending", "upcoming")), None)
+
+        target_challenge = date_match or pending or url_match or (active_challenges[0] if active_challenges else challenges[-1])
 
         day = target_challenge.get("day", 1)
         was_already_solved = (target_challenge.get("status") == "solved")

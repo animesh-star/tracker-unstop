@@ -168,16 +168,41 @@ async function loadData(silent = false) {
 
     cachedChallenges = challenges;
     cachedCurrentRun = currentRun;
-    cachedCurrent = challenge;
     cachedStats = stats;
 
-    currentChallenge = challenge;
+    // Safety guard: ensure today's challenge is never a pre-break challenge (e.g. Day 19)
+    const hasBroken = Boolean(
+      stats?.is_broken ||
+      (stats?.streak_breaks && stats.streak_breaks.length > 0) ||
+      (stats?.last_broken_day && stats.last_broken_day > 0)
+    );
+    const brokenDay = stats?.last_broken_day || (stats?.is_broken ? 19 : 0);
+
+    let activeChallenge = challenge;
+    if (hasBroken && activeChallenge && (activeChallenge.day || 0) <= brokenDay) {
+      console.warn('[loadData] Stale pre-break challenge detected (Day ' + activeChallenge.day + '). Fallback to active run challenge.');
+      const pool = (currentRun && currentRun.length > 0)
+        ? currentRun
+        : challenges.filter(c => (c.day || 0) > brokenDay);
+      const todayStr = new Date().toISOString().split('T')[0];
+      const realToday = pool.find(c => c.assigned_date === todayStr)
+        || pool.find(c => c.status === 'pending')
+        || pool.find(c => c.status === 'solved' && c.solved_at && c.solved_at.startsWith(todayStr))
+        || pool[pool.length - 1];
+      if (realToday) {
+        activeChallenge = realToday;
+      }
+    }
+
+    cachedCurrent = activeChallenge;
+    currentChallenge = activeChallenge;
+
     renderUserProfile(user);
-    renderDuolingoStreak(stats, challenge, user);
-    renderWeeklyCalendar(challenges, challenge);
+    renderDuolingoStreak(stats, activeChallenge, user);
+    renderWeeklyCalendar(challenges, activeChallenge);
     renderMilestone(stats);
-    renderTodayCard(challenge, stats, user);
-    renderPathGrid(challenges, challenge, stats);
+    renderTodayCard(activeChallenge, stats, user);
+    renderPathGrid(challenges, activeChallenge, stats);
     renderHistory(challenges, currentRun, stats);
 
     const liveBadge = document.getElementById('live-sync-badge');
@@ -487,13 +512,47 @@ function renderTodayCard(challenge, stats, user) {
   const solveBtn = document.getElementById('btn-solve');
   const questIcon = document.getElementById('quest-icon');
 
-  titleEl.textContent = challenge.title || `Day ${challenge.day} Challenge`;
+  const hasBroken = Boolean(
+    stats?.is_broken ||
+    (stats?.streak_breaks && stats.streak_breaks.length > 0) ||
+    (stats?.last_broken_day && stats.last_broken_day > 0)
+  );
+  const brokenDay = stats?.last_broken_day || (stats?.is_broken ? 19 : 0);
 
-  const effectiveLink = sanitizeUrl(challenge.link || user?.practiceUrl || 'https://unstop.com/practice/coding');
+  // Safety fallback: if challenge is stale pre-break (<= brokenDay), resolve active challenge
+  let activeChallenge = challenge;
+  if (hasBroken && activeChallenge && (activeChallenge.day || 0) <= brokenDay) {
+    const pool = (cachedCurrentRun && cachedCurrentRun.length > 0)
+      ? cachedCurrentRun
+      : (cachedChallenges || []).filter(c => (c.day || 0) > brokenDay);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const realToday = pool.find(c => c.assigned_date === todayStr)
+      || pool.find(c => c.status === 'pending')
+      || pool.find(c => c.status === 'solved' && c.solved_at && c.solved_at.startsWith(todayStr))
+      || pool[pool.length - 1];
+    if (realToday) {
+      activeChallenge = realToday;
+      currentChallenge = realToday;
+      cachedCurrent = realToday;
+    }
+  }
+
+  const origDay = activeChallenge.orig_day || activeChallenge.day || 1;
+  const rawTitle = activeChallenge.title || 'Coding Practice Platform for Placements & Interviews';
+  const cleanTitle = rawTitle.replace(/^Day\s*\d+\s*:\s*/i, '').trim() || 'Coding Practice Platform for Placements & Interviews';
+
+  if (hasBroken && origDay > brokenDay) {
+    const runDay = origDay - brokenDay;
+    titleEl.textContent = `Day ${origDay} (Run Day ${runDay}): ${cleanTitle}`;
+  } else {
+    titleEl.textContent = `Day ${origDay}: ${cleanTitle}`;
+  }
+
+  const effectiveLink = sanitizeUrl(activeChallenge.link || user?.practiceUrl || 'https://unstop.com/practice/coding');
   linkEl.href = effectiveLink;
   linkEl.innerHTML = `<span>Open Problem on Unstop Practice Platform →</span>`;
 
-  if (challenge.status === 'solved') {
+  if (activeChallenge.status === 'solved') {
     card.classList.add('solved');
     card.classList.remove('pending');
     banner.classList.add('status-solved');

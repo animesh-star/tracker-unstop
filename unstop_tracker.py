@@ -258,46 +258,47 @@ def get_or_create_today_challenge() -> Dict[str, Any]:
     if not challenges:
         return {}
 
-    # 1. First check if any challenge was solved today (suppresses reminders for the day)
-    for c in challenges:
+    settings = db.get("settings", {})
+    broken_day = int(settings.get("last_broken_day", 19) or 19)
+    has_broken = bool(settings.get("is_broken") or settings.get("streak_breaks") or settings.get("total_streak_breaks") or settings.get("last_broken_day"))
+
+    # Active challenges pool: when streak is broken, old pre-break challenges are NEVER today's quest
+    pool = [c for c in challenges if c.get("day", 0) > broken_day] if has_broken else challenges
+
+    # 1. First check if any active challenge was solved today (suppresses reminders for the day)
+    for c in pool:
         s_date = (c.get("solved_at") or "").split("T")[0]
         a_date = c.get("assigned_date") or ""
         if (s_date == today or a_date == today) and c.get("status") == "solved":
             return c
 
     # 2. Check if there is an active challenge assigned for today
-    for c in challenges:
+    for c in pool:
         if c.get("assigned_date") == today and c.get("status") in ("pending", "upcoming"):
             if c.get("status") != "pending":
                 c["status"] = "pending"
                 write_db(db)
             return c
 
-    # 3. Check for any existing pending challenge
-    pending = next((c for c in challenges if c.get("status") == "pending"), None)
+    # 3. Check for any existing pending challenge in active pool
+    pending = next((c for c in pool if c.get("status") == "pending"), None)
     if pending:
         if not pending.get("assigned_date"):
             pending["assigned_date"] = today
             write_db(db)
         return pending
 
-    # 4. Next sequential day after highest solved or missed challenge
-    max_day = 0
-    for c in challenges:
-        if c.get("status") in ("solved", "missed"):
-            if c.get("day", 0) > max_day:
-                max_day = c.get("day", 0)
+    # 4. Next sequential day in active pool
+    active_unsolved = [c for c in pool if c.get("status") not in ("solved", "missed")]
+    if active_unsolved:
+        active_unsolved.sort(key=lambda x: x.get("day", 0))
+        next_c = active_unsolved[0]
+        next_c["status"] = "pending"
+        next_c["assigned_date"] = today
+        write_db(db)
+        return next_c
 
-    next_day = min(max_day + 1, 30)
-    match = next((c for c in challenges if c.get("day") == next_day), None)
-    if match:
-        if match.get("status") != "solved":
-            match["status"] = "pending"
-            match["assigned_date"] = today
-            write_db(db)
-        return match
-
-    return challenges[0] if challenges else {}
+    return pool[0] if pool else (challenges[0] if challenges else {})
 
 def evaluate_and_update_missed_days() -> None:
     """

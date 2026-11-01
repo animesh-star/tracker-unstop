@@ -483,15 +483,20 @@ def ensure_today_challenge_activated() -> dict:
     challenges = db.get("challenges", [])
     changed = False
 
-    # Check if already solved today
-    for c in challenges:
+    settings = db.get("settings", {})
+    broken_day = int(settings.get("last_broken_day", 19) or 19)
+    has_broken = bool(settings.get("is_broken") or settings.get("streak_breaks") or settings.get("total_streak_breaks") or settings.get("last_broken_day"))
+    pool = [c for c in challenges if c.get("day", 0) > broken_day] if has_broken else challenges
+
+    # Check if active challenge already solved today
+    for c in pool:
         s_date = (c.get("solved_at") or "").split("T")[0]
         a_date = c.get("assigned_date") or ""
         if (s_date == today or a_date == today) and c.get("status") == "solved":
             return c
 
     # Check if active challenge assigned for today exists
-    today_c = next((c for c in challenges if c.get("assigned_date") == today), None)
+    today_c = next((c for c in pool if c.get("assigned_date") == today), None)
     if today_c:
         if today_c.get("status") == "upcoming":
             today_c["status"] = "pending"

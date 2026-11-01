@@ -228,16 +228,29 @@ function nowISO() {
 function getOrCreateTodayChallenge() {
   const db = readDB();
   const today = todayDateStr();
+  const settings = db.settings || {};
+  const brokenDay = parseInt(settings.last_broken_day || 19, 10);
+  const hasBroken = Boolean(
+    settings.is_broken ||
+    (settings.streak_breaks && settings.streak_breaks.length > 0) ||
+    (settings.total_streak_breaks && settings.total_streak_breaks > 0) ||
+    settings.last_broken_day
+  );
 
-  // 1. First check if any challenge was solved TODAY (preserves active streak & suppresses alerts)
-  const todaySolved = db.challenges.find(c => {
+  // Active challenges pool: when streak is broken, old pre-break challenges are NEVER today's quest
+  const pool = hasBroken
+    ? db.challenges.filter(c => (c.day || 0) > brokenDay)
+    : db.challenges;
+
+  // 1. First check if any active challenge was solved TODAY
+  const todaySolved = pool.find(c => {
     const sDate = c.solved_at ? c.solved_at.split('T')[0] : null;
-    return sDate === today && c.status === 'solved';
+    return (sDate === today || c.assigned_date === today) && c.status === 'solved';
   });
   if (todaySolved) return todaySolved;
 
-  // 2. Check if a challenge is already assigned for today
-  let todayAssigned = db.challenges.find(c => c.assigned_date === today);
+  // 2. Check if an active challenge is already assigned for today
+  let todayAssigned = pool.find(c => c.assigned_date === today);
   if (todayAssigned) {
     if (todayAssigned.status === 'upcoming') {
       todayAssigned.status = 'pending';
@@ -247,7 +260,7 @@ function getOrCreateTodayChallenge() {
   }
 
   // 3. Prioritize active pending quest
-  let pending = db.challenges.find(c => c.status === 'pending');
+  let pending = pool.find(c => c.status === 'pending');
   if (pending) {
     if (!pending.assigned_date) {
       pending.assigned_date = today;
@@ -256,28 +269,18 @@ function getOrCreateTodayChallenge() {
     return pending;
   }
 
-  // 4. Next sequential active day after highest solved or missed challenge
-  let maxCompletedOrMissedDay = 0;
-  for (const c of db.challenges) {
-    if (c.status === 'solved' || c.status === 'missed') {
-      if ((c.day || 0) > maxCompletedOrMissedDay) {
-        maxCompletedOrMissedDay = c.day || 0;
-      }
-    }
+  // 4. Next sequential active day in active pool
+  const activeUnsolved = pool.filter(c => c.status !== 'solved' && c.status !== 'missed');
+  if (activeUnsolved.length > 0) {
+    activeUnsolved.sort((a, b) => (a.day || 0) - (b.day || 0));
+    const nextMatch = activeUnsolved[0];
+    nextMatch.status = 'pending';
+    nextMatch.assigned_date = today;
+    writeDB(db);
+    return nextMatch;
   }
 
-  const nextDay = Math.min(maxCompletedOrMissedDay + 1, 30);
-  const match = db.challenges.find(c => c.day === nextDay);
-  if (match) {
-    if (match.status !== 'solved') {
-      match.status = 'pending';
-      match.assigned_date = today;
-      writeDB(db);
-    }
-    return match;
-  }
-
-  return db.challenges[0] || null;
+  return pool[0] || db.challenges[0] || null;
 }
 
 function getTodayChallenge() {
