@@ -258,38 +258,31 @@ def get_or_create_today_challenge() -> Dict[str, Any]:
     if not challenges:
         return {}
 
-    settings = db.get("settings", {})
-    broken_day = int(settings.get("last_broken_day", 19) or 19)
-    has_broken = bool(settings.get("is_broken") or settings.get("streak_breaks") or settings.get("total_streak_breaks") or settings.get("last_broken_day"))
-
-    # Active challenges pool: when streak is broken, old pre-break challenges are NEVER today's quest
-    pool = [c for c in challenges if c.get("day", 0) > broken_day] if has_broken else challenges
-
-    # 1. First check if any active challenge was solved today (suppresses reminders for the day)
-    for c in pool:
+    # 1. First check if any challenge was solved today
+    for c in challenges:
         s_date = (c.get("solved_at") or "").split("T")[0]
         a_date = c.get("assigned_date") or ""
         if (s_date == today or a_date == today) and c.get("status") == "solved":
             return c
 
     # 2. Check if there is an active challenge assigned for today
-    for c in pool:
+    for c in challenges:
         if c.get("assigned_date") == today and c.get("status") in ("pending", "upcoming"):
             if c.get("status") != "pending":
                 c["status"] = "pending"
                 write_db(db)
             return c
 
-    # 3. Check for any existing pending challenge in active pool
-    pending = next((c for c in pool if c.get("status") == "pending"), None)
+    # 3. Check for any existing pending challenge
+    pending = next((c for c in challenges if c.get("status") == "pending"), None)
     if pending:
         if not pending.get("assigned_date"):
             pending["assigned_date"] = today
             write_db(db)
         return pending
 
-    # 4. Next sequential day in active pool
-    active_unsolved = [c for c in pool if c.get("status") not in ("solved", "missed")]
+    # 4. Next sequential upcoming day
+    active_unsolved = [c for c in challenges if c.get("status") == "upcoming"]
     if active_unsolved:
         active_unsolved.sort(key=lambda x: x.get("day", 0))
         next_c = active_unsolved[0]
@@ -297,6 +290,8 @@ def get_or_create_today_challenge() -> Dict[str, Any]:
         next_c["assigned_date"] = today
         write_db(db)
         return next_c
+
+    return challenges[0]
 
     return pool[0] if pool else (challenges[0] if challenges else {})
 
@@ -567,81 +562,8 @@ def get_stats() -> Dict[str, Any]:
 def get_current_run_challenges() -> List[Dict[str, Any]]:
     evaluate_and_update_missed_days()
     db = read_db()
-    current = get_or_create_today_challenge()
-    stats = get_stats()
-    streak = stats.get("streak", 0)
-    settings = db.get("settings", {})
-    streak_breaks = stats.get("streak_breaks", [])
-    is_broken = stats.get("is_broken", False) or len(streak_breaks) > 0 or stats.get("total_streak_breaks", 0) > 0
-
-    if not is_broken:
-        cmap = {c.get("day"): c for c in db.get("challenges", [])}
-        roadmap = []
-        for d in range(1, 31):
-            if d in cmap:
-                roadmap.append(cmap[d])
-            else:
-                roadmap.append({
-                    "id": d,
-                    "day": d,
-                    "title": f"Day {d}: Coding Practice Platform for Placements & Interviews",
-                    "link": "https://unstop.com/practice/coding",
-                    "status": "missed" if d < current.get("day", 1) else "upcoming",
-                    "reminded_at": None,
-                    "solved_at": None,
-                    "created_at": None,
-                })
-        return roadmap
-
-    # From where streak was broken (Day 19 on Oct 26), start next 30-day task sequence (Day 20 = Run Day 1)
-    broken_day = int(settings.get("last_broken_day", 19) or 19)
-    start_day = broken_day + 1 # e.g. Day 20
-    cmap = {c.get("day"): c for c in db.get("challenges", [])}
-
-    run_challenges = []
-    today_solved = current.get("status") == "solved"
-
-    for step in range(1, 31):
-        orig_day = start_day + step - 1
-        existing = cmap.get(orig_day)
-
-        status = "upcoming"
-        solved_at = None
-        title = f"Day {step}: Coding Practice Platform for Placements & Interviews"
-        link = "https://unstop.com/practice/coding"
-        assigned_date = existing.get("assigned_date") if existing else None
-
-        if existing:
-            status = existing.get("status", "upcoming")
-            solved_at = existing.get("solved_at")
-            link = existing.get("link") or link
-            raw_title = existing.get("title", "")
-            clean_name = raw_title.split(":", 1)[1].strip() if ":" in raw_title else raw_title
-            title = f"Day {step}: {clean_name}" if clean_name else f"Day {step}: Coding Practice Platform for Placements & Interviews"
-
-        if step <= streak:
-            status = "solved"
-            if not solved_at and existing and existing.get("solved_at"):
-                solved_at = existing.get("solved_at")
-        elif step == streak + 1 and not today_solved:
-            status = "pending"
-        elif step > streak:
-            status = "upcoming"
-
-        run_challenges.append({
-            "id": step,
-            "day": step,
-            "orig_day": orig_day,
-            "title": title,
-            "link": link,
-            "status": status,
-            "solved_at": solved_at,
-            "assigned_date": assigned_date,
-            "created_at": None,
-            "reminded_at": None
-        })
-
-    return run_challenges
+    challenges = db.get("challenges", [])
+    return sorted(challenges, key=lambda x: x.get("day", 0))
 
 def get_30_day_roadmap() -> List[Dict[str, Any]]:
     return get_current_run_challenges()

@@ -483,10 +483,7 @@ def ensure_today_challenge_activated() -> dict:
     challenges = db.get("challenges", [])
     changed = False
 
-    settings = db.get("settings", {})
-    broken_day = int(settings.get("last_broken_day", 19) or 19)
-    has_broken = bool(settings.get("is_broken") or settings.get("streak_breaks") or settings.get("total_streak_breaks") or settings.get("last_broken_day"))
-    pool = [c for c in challenges if c.get("day", 0) > broken_day] if has_broken else challenges
+    pool = challenges
 
     # Check if active challenge already solved today
     for c in pool:

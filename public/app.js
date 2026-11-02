@@ -187,30 +187,7 @@ async function loadData(silent = false) {
     cachedCurrentRun = currentRun;
     cachedStats = stats;
 
-    // Safety guard: ensure today's challenge is never a pre-break challenge (e.g. Day 19)
-    const hasBroken = Boolean(
-      stats?.is_broken ||
-      (stats?.streak_breaks && stats.streak_breaks.length > 0) ||
-      (stats?.last_broken_day && stats.last_broken_day > 0)
-    );
-    const brokenDay = stats?.last_broken_day || (stats?.is_broken ? 19 : 0);
-
-    let activeChallenge = challenge;
-    if (hasBroken && activeChallenge && (activeChallenge.day || 0) <= brokenDay) {
-      console.warn('[loadData] Stale pre-break challenge detected (Day ' + activeChallenge.day + '). Fallback to active run challenge.');
-      const pool = (currentRun && currentRun.length > 0)
-        ? currentRun
-        : challenges.filter(c => (c.day || 0) > brokenDay);
-      const todayStr = new Date().toISOString().split('T')[0];
-      const realToday = pool.find(c => c.assigned_date === todayStr)
-        || pool.find(c => c.status === 'pending')
-        || pool.find(c => c.status === 'solved' && c.solved_at && c.solved_at.startsWith(todayStr))
-        || pool[pool.length - 1];
-      if (realToday) {
-        activeChallenge = realToday;
-      }
-    }
-
+    const activeChallenge = challenge || challenges.find(c => c.status === 'pending') || challenges[0];
     cachedCurrent = activeChallenge;
     currentChallenge = activeChallenge;
 
@@ -531,41 +508,12 @@ function renderTodayCard(challenge, stats, user) {
   const solveBtn = document.getElementById('btn-solve');
   const questIcon = document.getElementById('quest-icon');
 
-  const hasBroken = Boolean(
-    stats?.is_broken ||
-    (stats?.streak_breaks && stats.streak_breaks.length > 0) ||
-    (stats?.last_broken_day && stats.last_broken_day > 0)
-  );
-  const brokenDay = stats?.last_broken_day || (stats?.is_broken ? 19 : 0);
-
-  // Safety fallback: if challenge is stale pre-break (<= brokenDay), resolve active challenge
-  let activeChallenge = challenge;
-  if (hasBroken && activeChallenge && (activeChallenge.day || 0) <= brokenDay) {
-    const pool = (cachedCurrentRun && cachedCurrentRun.length > 0)
-      ? cachedCurrentRun
-      : (cachedChallenges || []).filter(c => (c.day || 0) > brokenDay);
-    const todayStr = new Date().toISOString().split('T')[0];
-    const realToday = pool.find(c => c.assigned_date === todayStr)
-      || pool.find(c => c.status === 'pending')
-      || pool.find(c => c.status === 'solved' && c.solved_at && c.solved_at.startsWith(todayStr))
-      || pool[pool.length - 1];
-    if (realToday) {
-      activeChallenge = realToday;
-      currentChallenge = realToday;
-      cachedCurrent = realToday;
-    }
-  }
-
-  const origDay = activeChallenge.orig_day || activeChallenge.day || 1;
+  const activeChallenge = challenge;
+  const dayNum = activeChallenge.day || 1;
   const rawTitle = activeChallenge.title || 'Coding Practice Platform for Placements & Interviews';
   const cleanTitle = rawTitle.replace(/^Day\s*\d+\s*:\s*/i, '').trim() || 'Coding Practice Platform for Placements & Interviews';
 
-  if (hasBroken && origDay > brokenDay) {
-    const runDay = origDay - brokenDay;
-    titleEl.textContent = `Day ${origDay} (Run Day ${runDay}): ${cleanTitle}`;
-  } else {
-    titleEl.textContent = `Day ${origDay}: ${cleanTitle}`;
-  }
+  titleEl.textContent = `Day ${dayNum}: ${cleanTitle}`;
 
   const effectiveLink = sanitizeUrl(activeChallenge.link || user?.practiceUrl || 'https://unstop.com/practice/coding');
   linkEl.href = effectiveLink;
@@ -644,152 +592,75 @@ function renderPathGrid(challenges = [], current, stats = null) {
 
   const streak = stats?.streak || 0;
   const isTodaySolved = current && current.status === 'solved';
-  const hasBroken = Boolean(
-    stats?.is_broken ||
-    (stats?.streak_breaks && stats.streak_breaks.length > 0) ||
-    (stats?.total_streak_breaks && stats.total_streak_breaks > 0) ||
-    (stats?.last_broken_streak && stats.last_broken_streak > 0)
-  );
-
-  // If the streak broke, Path of Mastery restarts automatically from Day 1!
-  const showRestartedRun = hasBroken && pathViewMode !== 'all';
 
   if (toggleBtn) {
-    toggleBtn.style.display = hasBroken ? 'inline-flex' : 'none';
-    toggleBtn.innerHTML = showRestartedRun ? '🔥 Current Run (Day 1-30)' : '📜 All-Time Map';
+    toggleBtn.style.display = 'none';
   }
 
-  if (showRestartedRun) {
-    if (solvedCountEl) {
-      solvedCountEl.textContent = streak;
-    }
-    if (subEl) {
-      subEl.innerHTML = `🔄 <strong>Streak Restarted:</strong> Starting from <strong>Day 1</strong> of your 30-day journey. Active Streak: <strong>${streak} Day${streak === 1 ? '' : 's'}</strong> • All-Time Best Record: <strong>${stats?.best_streak || 20}d</strong>`;
-    }
+  if (solvedCountEl) {
+    solvedCountEl.textContent = stats?.solved || streak;
+  }
+  if (subEl) {
+    subEl.innerHTML = `🗺️ <strong>30-Day Path of Mastery:</strong> Active Streak: <strong>${streak} Day${streak === 1 ? '' : 's'}</strong> • Best Record: <strong>${stats?.best_streak || 20}d</strong>`;
+  }
 
-    for (let step = 1; step <= 30; step++) {
-      const node = document.createElement('div');
-      node.className = 'stone-node';
+  for (let step = 1; step <= 30; step++) {
+    const node = document.createElement('div');
+    node.className = 'stone-node';
 
-      const circle = document.createElement('div');
-      circle.className = 'stone-circle';
+    const circle = document.createElement('div');
+    circle.className = 'stone-circle';
 
-      if (step <= streak) {
-        // Solved in current active streak run
-        circle.classList.add('stone-solved');
-        circle.innerHTML = '✅';
-        node.title = `Streak Day ${step}: Solved! (${step === streak && current ? current.title : 'Challenge Completed'})`;
-        node.onclick = () => {
-          if (current?.link) {
-            window.open(current.link, '_blank', 'noopener,noreferrer');
-          } else {
-            window.open('https://unstop.com/practice/coding', '_blank', 'noopener,noreferrer');
-          }
-        };
-      } else if (step === streak + 1 && !isTodaySolved) {
-        // Active today (pending challenge to advance the streak!)
-        circle.classList.add('stone-active');
-        circle.innerHTML = '⚡';
-        node.title = `Streak Day ${step}: Active Today! (${current?.title || "Today's Quest"})`;
-        node.onclick = () => {
-          scrollToQuest();
-        };
-      } else if (step === streak + 1 && isTodaySolved) {
-        // Solved today, next streak stone unlocks tomorrow
-        circle.classList.add('stone-locked');
-        circle.innerHTML = `<span style="font-size:0.9rem; opacity:0.8;">⏳</span>`;
-        node.title = `Streak Day ${step}: Unlocks Tomorrow at Midnight! Complete to advance streak to ${step} Days.`;
-        node.onclick = () => {
-          showToast(`⏳ Streak Day ${step} unlocks tomorrow at midnight! Complete it to keep your flame alive.`, 'info');
-        };
-      } else {
-        // Future locked stones
-        circle.classList.add('stone-locked');
-        circle.innerHTML = `<span style="font-size:0.9rem; opacity:0.6;">🔒</span>`;
-        node.title = `Streak Day ${step}: Locked (Reach Day ${step - 1} first)`;
-        node.onclick = () => {
-          showToast(`🔒 Locked. Complete Day ${step - 1} to reach this stone!`, 'info');
-        };
-      }
-
-      const label = document.createElement('span');
-      label.className = 'stone-day-label';
-      label.textContent = `Day ${step}`;
-
-      node.appendChild(circle);
-      node.appendChild(label);
-      container.appendChild(node);
-    }
-  } else {
-    // All-time historical map view
-    const solvedDays = new Set(challenges.filter(c => c.status === 'solved').map(c => c.day));
-    const missedDays = new Set(challenges.filter(c => c.status === 'missed').map(c => c.day));
-    const currentDay = current?.day || 1;
-
-    if (solvedCountEl) {
-      solvedCountEl.textContent = solvedDays.size;
-    }
-    if (subEl) {
-      subEl.textContent = 'Step-by-step roadmap. Complete each day to unlock the full 30-day champion trophy!';
-    }
-
-    for (let d = 1; d <= 30; d++) {
-      const match = challenges.find(c => c.day === d);
-      const node = document.createElement('div');
-      node.className = 'stone-node';
-
-      const circle = document.createElement('div');
-      circle.className = 'stone-circle';
-
-      const questTitle = match?.title || `Day ${d} Coding Challenge`;
-
-      if (solvedDays.has(d)) {
-        circle.classList.add('stone-solved');
-        circle.innerHTML = '✅';
-        node.title = `Day ${d}: Solved! (${questTitle})`;
-      } else if (missedDays.has(d)) {
-        circle.classList.add('stone-missed');
-        circle.innerHTML = '💔';
-        node.title = `Day ${d}: Missed! (${questTitle})`;
-      } else if (d === currentDay) {
-        circle.classList.add('stone-active');
-        circle.innerHTML = '⚡';
-        node.title = `Day ${d}: Active Today! (${questTitle})`;
-      } else {
-        circle.classList.add('stone-locked');
-        circle.innerHTML = `<span style="font-size:0.9rem; opacity:0.6;">🔒</span>`;
-        node.title = `Day ${d}: ${questTitle}`;
-      }
-
-      const label = document.createElement('span');
-      label.className = 'stone-day-label';
-      label.textContent = `Day ${d}`;
-
+    if (step <= streak) {
+      // Solved in current active streak run
+      circle.classList.add('stone-solved');
+      circle.innerHTML = '✅';
+      node.title = `Day ${step}: Solved! (${step === streak && current ? current.title : 'Challenge Completed'})`;
       node.onclick = () => {
-        if (match && match.link) {
-          window.open(match.link, '_blank', 'noopener,noreferrer');
+        if (current?.link) {
+          window.open(current.link, '_blank', 'noopener,noreferrer');
         } else {
           window.open('https://unstop.com/practice/coding', '_blank', 'noopener,noreferrer');
         }
       };
-
-      node.appendChild(circle);
-      node.appendChild(label);
-      container.appendChild(node);
+    } else if (step === streak + 1 && !isTodaySolved) {
+      // Active today (pending challenge to advance the streak!)
+      circle.classList.add('stone-active');
+      circle.innerHTML = '⚡';
+      node.title = `Day ${step}: Active Today! (${current?.title || "Today's Quest"})`;
+      node.onclick = () => {
+        scrollToQuest();
+      };
+    } else if (step === streak + 1 && isTodaySolved) {
+      // Solved today, next streak stone unlocks tomorrow
+      circle.classList.add('stone-locked');
+      circle.innerHTML = `<span style="font-size:0.9rem; opacity:0.8;">⏳</span>`;
+      node.title = `Day ${step}: Unlocks Tomorrow at Midnight! Complete to advance streak to ${step} Days.`;
+      node.onclick = () => {
+        showToast(`⏳ Day ${step} unlocks tomorrow at midnight! Complete it to keep your flame alive.`, 'info');
+      };
+    } else {
+      // Future locked stones
+      circle.classList.add('stone-locked');
+      circle.innerHTML = `<span style="font-size:0.9rem; opacity:0.6;">🔒</span>`;
+      node.title = `Day ${step}: Locked (Reach Day ${step - 1} first)`;
+      node.onclick = () => {
+        showToast(`🔒 Locked. Complete Day ${step - 1} to reach this stone!`, 'info');
+      };
     }
+
+    const label = document.createElement('span');
+    label.className = 'stone-day-label';
+    label.textContent = `Day ${step}`;
+
+    node.appendChild(circle);
+    node.appendChild(label);
+    container.appendChild(node);
   }
 }
 
-// ─── 4. Render History Table (Full 30-Day Track & Current Run Reset) ─────────
-let historyViewMode = 'run'; // 'run' (active 30-day streak run sequence) or 'all' (all-time archive)
-let cachedCurrentRun = [];
-
+// ─── 4. Render History Table (Full Clean 30-Day Track) ─────────────────────────
 function toggleHistoryView() {
-  historyViewMode = historyViewMode === 'run' ? 'all' : 'run';
-  const btn = document.getElementById('btn-toggle-history-view');
-  if (btn) {
-    btn.innerHTML = historyViewMode === 'run' ? '🔥 Current Run (Day 1-30)' : '📜 All-Time History';
-  }
   renderHistory(cachedChallenges, cachedCurrentRun, cachedStats);
 }
 
@@ -800,37 +671,17 @@ function renderHistory(challenges = [], currentRun = [], stats = null) {
   const thDayLabel = document.getElementById('th-day-label');
   if (!tbody) return;
 
-  const hasBroken = Boolean(
-    stats?.is_broken ||
-    (stats?.streak_breaks && stats.streak_breaks.length > 0) ||
-    (stats?.total_streak_breaks && stats.total_streak_breaks > 0) ||
-    (stats?.last_broken_streak && stats.last_broken_streak > 0)
-  );
-
-  const showCurrentRun = hasBroken && historyViewMode !== 'all';
-
   if (toggleBtn) {
-    toggleBtn.style.display = hasBroken ? 'inline-flex' : 'none';
-    toggleBtn.innerHTML = showCurrentRun ? '🔥 Current Run (Day 1-30)' : '📜 All-Time History';
+    toggleBtn.style.display = 'none';
   }
 
-  let itemsToRender = [];
-
-  if (showCurrentRun) {
-    if (thDayLabel) thDayLabel.textContent = 'Run Day';
-    if (subEl) {
-      subEl.innerHTML = `🔥 <strong>Current 30-Day Run:</strong> Reset from streak break (Day 20 = Run Day 1). Showing new 30-day quest path • Best Streak: <strong>${stats?.best_streak || 20}d</strong>`;
-    }
-    itemsToRender = currentRun && currentRun.length > 0 ? currentRun : challenges;
-  } else {
-    if (thDayLabel) thDayLabel.textContent = 'Day';
-    if (subEl) {
-      subEl.textContent = 'All-time historical archive of completed, missed, and upcoming challenges.';
-    }
-    itemsToRender = challenges;
+  if (thDayLabel) thDayLabel.textContent = 'Day';
+  if (subEl) {
+    subEl.innerHTML = `📜 <strong>30-Day Quest Records:</strong> Active 30-day journey • Current Streak: <strong>${stats?.streak || 0}d</strong> • Best Record: <strong>${stats?.best_streak || 20}d</strong>`;
   }
 
-  if (!itemsToRender || itemsToRender.length === 0) {
+  const itemsToRender = challenges && challenges.length > 0 ? challenges : [];
+  if (itemsToRender.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5" class="empty-row">No quest records found.</td></tr>';
     return;
   }
@@ -855,11 +706,10 @@ function renderHistory(challenges = [], currentRun = [], stats = null) {
 
     const safeLink = sanitizeUrl(c.link || 'https://unstop.com/practice/coding');
     const safeTitle = escapeHtml(c.title || `Day ${c.day} Challenge`);
-    const dayLabel = showCurrentRun && c.orig_day ? `Day ${c.day} <span style="color:var(--text-3); font-size:0.75rem; font-weight:normal;">(Orig ${c.orig_day})</span>` : `Day ${c.day}`;
 
     return `
       <tr>
-        <td><strong>${dayLabel}</strong></td>
+        <td><strong>Day ${c.day}</strong></td>
         <td>${safeTitle}</td>
         <td>${statusChip}</td>
         <td>${solvedAt}</td>
