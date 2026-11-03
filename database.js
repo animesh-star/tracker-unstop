@@ -715,14 +715,12 @@ function syncDatabase(incoming) {
       db.challenges.push(c);
       cmap[c.day] = c;
     } else {
-      if (c.status === 'solved' || existing.status !== 'solved') {
-        existing.status = c.status;
-        if (c.solved_at) existing.solved_at = c.solved_at;
-      }
+      existing.status = c.status;
+      existing.solved_at = c.solved_at || null;
       if (c.link) existing.link = sanitizeUrl(c.link) || existing.link;
       if (c.title) existing.title = sanitizeText(c.title, 150) || existing.title;
-      if (c.assigned_date) existing.assigned_date = c.assigned_date;
-      if (c.missed_at !== undefined) existing.missed_at = c.missed_at;
+      existing.assigned_date = c.assigned_date || null;
+      existing.missed_at = c.missed_at !== undefined ? c.missed_at : null;
     }
   }
 
