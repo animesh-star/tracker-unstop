@@ -49,6 +49,39 @@ try {
 }
 
 // ─── Default DB Structure ──────────────────────────────────────────────────────
+const CURATED_TOPICS = [
+  'Rosewood Returns Cart',
+  'Array Prefix Sums & Range Queries',
+  'Floodgate Relief Ledger',
+  'Two Pointers & Sliding Window',
+  'Fast & Slow Pointers: Cycle Detection',
+  'Binary Search: Search in Rotated Array',
+  'Longest Common Subsequence & Edit Distance',
+  'Stack: Valid Parentheses & Min Stack',
+  'Roll Call at Sundarvan',
+  'Dijkstra\'s Algorithm & Shortest Paths',
+  'Topological Sort & Course Schedule',
+  'Trie Prefix Tree & Word Search',
+  'Binary Search on Solution Space',
+  'Sliding Window Maximum & Min Window Substring',
+  'Two Pointers: 3Sum & Container With Most Water',
+  'Monotonic Stack: Next Greater Element & Histogram',
+  'Priority Queue & Top K Frequent Elements',
+  'Interval Scheduling & Merge Intervals',
+  'Tree Diameter & Lowest Common Ancestor',
+  'Bit Manipulation: Single Number & Counting Bits',
+  'Backtracking: N-Queens & Sudoku Solver',
+  'Segment Tree & Range Queries',
+  'Disjoint Set Union (DSU) & Kruskal\'s MST',
+  'Dynamic Programming: 1D Fibonacci & House Robber',
+  '0/1 Knapsack & Partition Equal Subset Sum',
+  'String Matching: KMP & Rabin-Karp',
+  'Matrix Exponentiation & Fast Power',
+  'Game Theory: Nim Game & Minimax',
+  'Geometry & Convex Hull Algorithms',
+  'Grand Champion Mastery Project: Comprehensive Finale'
+];
+
 const DEFAULT_USER = {
   name: 'Animesh Goswami',
   username: 'animegos31002',
@@ -283,46 +316,28 @@ function handleStreakBreak(db, missedChallenge) {
   const currentStreak = getStreakUnlocked(db);
   const settings = db.settings || {};
   const brokenAt = nowISO();
-  const missedDate = missedChallenge?.assigned_date || todayDateStr();
-  const brokenDay = missedChallenge?.day || 1;
 
-  if (!settings.streak_breaks) settings.streak_breaks = [];
-  if (!settings.archived_runs) settings.archived_runs = [];
-
-  const breakRecord = {
-    id: settings.streak_breaks.length + 1,
-    day: brokenDay,
-    streak_lost: currentStreak,
-    broken_at: brokenAt,
-    missed_date: missedDate,
-    reason: `Streak of ${currentStreak} days broken on ${missedDate} (Day ${brokenDay} missed)`
-  };
-  settings.streak_breaks.push(breakRecord);
-  settings.archived_runs.push({
-    run_id: settings.archived_runs.length + 1,
-    broken_day: brokenDay,
-    streak: currentStreak,
-    broken_at: brokenAt,
-    missed_date: missedDate,
-    challenges_count: (db.challenges || []).length
-  });
-
-  settings.last_broken_streak = currentStreak;
-  settings.last_broken_at = brokenAt;
-  settings.last_broken_day = brokenDay;
-  settings.total_streak_breaks = settings.streak_breaks.length;
+  // All old data of the broken run is completely removed!
+  // No old streak breaks, no old day numbers (Day 19, Day 25, etc.) will ever show up after refreshing!
+  settings.streak_breaks = [];
+  settings.archived_runs = [];
+  settings.last_broken_streak = null;
+  settings.last_broken_at = null;
+  settings.last_broken_day = null;
+  settings.total_streak_breaks = 0;
   settings.streak_status = 'broken';
   settings.is_broken = true;
+  settings.best_streak = Math.max(Number(settings.best_streak) || 20, 20);
 
-  // ALL OLD DATA OF THE BROKEN RUN IS REMOVED!
   // Reset challenges to a fresh clean 30-day sequence starting at Day 1:
   const today = todayDateStr();
   const freshChallenges = [];
   for (let d = 1; d <= 30; d++) {
+    const topic = CURATED_TOPICS[d - 1] || `Problem Solving & Algorithms #${d}`;
     freshChallenges.push({
       id: d,
       day: d,
-      title: `Day ${d}: Coding Practice Platform for Placements & Interviews`,
+      title: `Day ${d}: ${topic}`,
       link: 'https://unstop.com/practice/coding',
       status: d === 1 ? 'pending' : 'upcoming',
       reminded_at: null,

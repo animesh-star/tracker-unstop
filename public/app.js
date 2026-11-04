@@ -361,8 +361,7 @@ function renderDuolingoStreak(stats, challenge, user) {
       warningBanner.classList.add('streak-broken-banner');
       if (warningTitle) warningTitle.textContent = '💔 STREAK BROKEN — START YOUR COMEBACK!';
       if (warningDesc) {
-        const lostStreak = stats?.last_broken_streak || bestStreak;
-        warningDesc.textContent = `Your streak was reset to 0 after missing Day ${stats?.last_broken_day || 'previous'}. Complete Day ${challenge?.day || 1} today to start your comeback streak! 💪`;
+        warningDesc.textContent = `A fresh 30-day journey has begun! Complete Day ${challenge?.day || 1} today to start your new streak! 💪`;
       }
       if (warningBtn) warningBtn.textContent = '🚀 Start Comeback Challenge';
     } else if (streakAtRisk) {
@@ -399,8 +398,7 @@ function renderDuolingoStreak(stats, challenge, user) {
   const msgEl = document.getElementById('duo-streak-message');
   if (msgEl) {
     if (isBroken) {
-      const lost = stats?.last_broken_streak || bestStreak;
-      msgEl.innerHTML = `💔 <strong>Streak Reset!</strong> Your previous streak of <strong>${lost} days</strong> was broken. Don't give up, <strong>${escapeHtml(firstName)}</strong>! Complete Day <strong>${challenge?.day || 1}</strong> now to ignite your comeback streak! 🚀`;
+      msgEl.innerHTML = `💔 <strong>Fresh Start!</strong> Complete Day <strong>${challenge?.day || 1}</strong> now to build your streak! 🚀`;
     } else if (challenge && challenge.status === 'solved') {
       msgEl.innerHTML = `You're on fire, <strong>${escapeHtml(firstName)}</strong>! Day ${challenge.day} is crushed. Streak: <strong>${streak} Days</strong>! Complete tomorrow's challenge to keep your flame blazing! 🔥`;
     } else if (streakAtRisk) {
@@ -720,79 +718,44 @@ function renderHistory(challenges = [], currentRun = [], stats = null) {
 }
 
 // ─── Actions: Open Task in Chrome ──────────────────────────────────────────────
-async function openTaskInChrome() {
-  const btn = document.getElementById('btn-open-chrome');
-  const originalHtml = btn ? btn.innerHTML : '';
-  if (btn) {
-    btn.innerHTML = '<span class="btn-icon">⏳</span><span>Fetching from Vercel...</span>';
-    btn.disabled = true;
-  }
+function openTaskInChrome(e) {
+  if (e && e.preventDefault) e.preventDefault();
 
+  // 1. Immediately determine target URL from active challenge
+  const linkEl = document.getElementById('challenge-link');
+  let targetUrl = currentChallenge?.link || (linkEl ? linkEl.getAttribute('href') : null) || 'https://unstop.com/practice/coding';
+  const safeLink = sanitizeUrl(targetUrl) || 'https://unstop.com/practice/coding';
+  const taskTitle = currentChallenge?.title || "Today's Coding Quest";
+
+  // 2. Open immediately in a new tab synchronously within user click gesture (prevents popup blockers)
+  let win = null;
   try {
-    let targetUrl = currentChallenge?.link;
-    let taskTitle = currentChallenge?.title || 'Today\'s Coding Quest';
+    win = window.open(safeLink, '_blank', 'noopener,noreferrer');
+  } catch (_) {}
 
-    // 1. Fetch latest task of the day directly from the Vercel live website ONLY if not solved
-    if (currentChallenge?.status !== 'solved') {
-      try {
-        const res = await fetch('https://unstop-gold.vercel.app/api/today');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.challenge && data.challenge.link && data.challenge.status !== 'solved') {
-            targetUrl = data.challenge.link;
-            taskTitle = data.challenge.title || taskTitle;
-            currentChallenge = data.challenge;
-
-            // Sync local if running local backend
-            if (API_BASE) {
-              fetch(`${API_BASE}/api/challenge/update`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  day: data.challenge.day,
-                  link: data.challenge.link,
-                  title: data.challenge.title
-                })
-              }).catch(() => { });
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('[App] Vercel task fetch warning:', err);
-      }
-    }
-
-    const safeLink = sanitizeUrl(targetUrl || 'https://unstop.com/practice/coding');
-
-    // 2. If running locally with desktop backend, trigger native Google Chrome launch
-    let launchedNative = false;
-    try {
-      const nativeRes = await fetch(`${API_BASE}/api/open-chrome`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: safeLink })
-      });
-      if (nativeRes.ok) {
-        const nativeData = await nativeRes.json();
-        if (nativeData.success) launchedNative = true;
-      }
-    } catch (_) { }
-
-    // 3. Fallback or standard browser open
-    if (!launchedNative) {
-      window.open(safeLink, '_blank', 'noopener,noreferrer');
-    }
-
-    showToast(`🚀 Opened ${taskTitle} from Vercel in Google Chrome!`, 'success');
-  } catch (err) {
-    console.error('[App] Error in openTaskInChrome:', err);
-    showToast('Failed to open challenge in Chrome', 'error');
-  } finally {
-    if (btn) {
-      btn.innerHTML = originalHtml || '<span class="btn-icon">🚀</span><span>Complete This in Chrome</span>';
-      btn.disabled = false;
-    }
+  // Direct fallback anchor trigger if window.open was restricted
+  if (!win || win.closed || typeof win.closed === 'undefined') {
+    const tempA = document.createElement('a');
+    tempA.href = safeLink;
+    tempA.target = '_blank';
+    tempA.rel = 'noopener noreferrer';
+    document.body.appendChild(tempA);
+    tempA.click();
+    document.body.removeChild(tempA);
   }
+
+  // 3. If running locally with desktop backend, trigger native Google Chrome launch asynchronously
+  if (API_BASE) {
+    fetch(`${API_BASE}/api/open-chrome`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: safeLink })
+    }).catch(() => {});
+  }
+
+  // 4. Accelerate live polling so completion on Unstop is detected instantly
+  setupLivePolling(true);
+  showToast(`🚀 Opening ${taskTitle} in Google Chrome!`, 'success');
 }
 
 // ─── Actions: Mark as Solved ──────────────────────────────────────────────────

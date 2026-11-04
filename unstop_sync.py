@@ -32,6 +32,39 @@ DB_PATH = DATA_DIR / "challenges.json"
 STATE_FILE = DATA_DIR / "notifier_state.json"
 IST = timezone(timedelta(hours=5, minutes=30))
 
+CURATED_TOPICS = [
+    "Rosewood Returns Cart",
+    "Array Prefix Sums & Range Queries",
+    "Floodgate Relief Ledger",
+    "Two Pointers & Sliding Window",
+    "Fast & Slow Pointers: Cycle Detection",
+    "Binary Search: Search in Rotated Array",
+    "Longest Common Subsequence & Edit Distance",
+    "Stack: Valid Parentheses & Min Stack",
+    "Roll Call at Sundarvan",
+    "Dijkstra's Algorithm & Shortest Paths",
+    "Topological Sort & Course Schedule",
+    "Trie Prefix Tree & Word Search",
+    "Binary Search on Solution Space",
+    "Sliding Window Maximum & Min Window Substring",
+    "Two Pointers: 3Sum & Container With Most Water",
+    "Monotonic Stack: Next Greater Element & Histogram",
+    "Priority Queue & Top K Frequent Elements",
+    "Interval Scheduling & Merge Intervals",
+    "Tree Diameter & Lowest Common Ancestor",
+    "Bit Manipulation: Single Number & Counting Bits",
+    "Backtracking: N-Queens & Sudoku Solver",
+    "Segment Tree & Range Queries",
+    "Disjoint Set Union (DSU) & Kruskal's MST",
+    "Dynamic Programming: 1D Fibonacci & House Robber",
+    "0/1 Knapsack & Partition Equal Subset Sum",
+    "String Matching: KMP & Rabin-Karp",
+    "Matrix Exponentiation & Fast Power",
+    "Game Theory: Nim Game & Minimax",
+    "Geometry & Convex Hull Algorithms",
+    "Grand Champion Mastery Project: Comprehensive Finale"
+]
+
 def today_date_str() -> str:
     return datetime.now(IST).strftime("%Y-%m-%d")
 
@@ -252,11 +285,22 @@ def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved:
                 "link": target_challenge.get("link")
             }
 
-        ALWAYS_TRACKED_LINK = "https://unstop.com/practice/coding"
-        ALWAYS_TRACKED_TITLE = "Coding Practice Platform for Placements & Interviews"
-        new_title = f"Day {day}: {ALWAYS_TRACKED_TITLE}"
-        target_challenge["title"] = new_title
-        target_challenge["link"] = ALWAYS_TRACKED_LINK
+        act_title = activity.get("title")
+        act_url = activity.get("url")
+        is_specific = activity.get("is_specific", False)
+
+        if is_specific and act_title and act_title != "Coding Practice Platform for Placements & Interviews":
+            new_title = f"Day {day}: {act_title}"
+            target_challenge["title"] = new_title
+            target_challenge["link"] = act_url or "https://unstop.com/practice/coding"
+        elif target_challenge.get("title") and "Coding Practice Platform" not in target_challenge.get("title", ""):
+            new_title = target_challenge["title"]
+            target_challenge["link"] = act_url or target_challenge.get("link") or "https://unstop.com/practice/coding"
+        else:
+            curated_title = CURATED_TOPICS[day - 1] if 1 <= day <= len(CURATED_TOPICS) else "Problem Solving & Algorithms"
+            new_title = f"Day {day}: {curated_title}"
+            target_challenge["title"] = new_title
+            target_challenge["link"] = act_url or "https://unstop.com/practice/coding"
 
         # Only change status to solved if explicitly requested
         if mark_solved and not was_already_solved:
