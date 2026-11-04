@@ -658,6 +658,28 @@ function renderPathGrid(challenges = [], current, stats = null) {
   }
 }
 
+// ─── Date Formatter Helper (DD/MM/YY) ──────────────────────────────────────────
+function formatDDMMYY(dateInput) {
+  if (!dateInput) return '—';
+  try {
+    if (typeof dateInput === 'string' && dateInput.includes('-') && dateInput.length === 10) {
+      const parts = dateInput.split('-');
+      const y = parts[0];
+      const m = parts[1];
+      const d = parts[2];
+      return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y.slice(-2)}`;
+    }
+    const dt = new Date(dateInput);
+    if (isNaN(dt.getTime())) return String(dateInput);
+    const day = String(dt.getDate()).padStart(2, '0');
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const year = String(dt.getFullYear()).slice(-2);
+    return `${day}/${month}/${year}`;
+  } catch {
+    return String(dateInput);
+  }
+}
+
 // ─── 4. Render History Table (Full Clean 30-Day Track) ─────────────────────────
 function toggleHistoryView() {
   renderHistory(cachedChallenges, cachedCurrentRun, cachedStats);
@@ -699,9 +721,11 @@ function renderHistory(challenges = [], currentRun = [], stats = null) {
             ? '<span class="status-chip chip-skipped">⏭️ Skipped</span>'
             : '<span class="status-chip" style="background:rgba(255,255,255,0.06); color:var(--text-3)">🔒 Upcoming</span>';
 
-    const solvedAt = c.solved_at
-      ? new Date(c.solved_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })
-      : (c.status === 'pending' ? 'Due Tonight 12 AM' : c.status === 'missed' ? 'Missed Day' : (c.assigned_date ? `Scheduled: ${c.assigned_date}` : '—'));
+    const rawDate = c.solved_at || c.assigned_date;
+    const dateFormatted = formatDDMMYY(rawDate);
+    const dateDisplay = c.status === 'solved'
+      ? `<strong>${dateFormatted}</strong>`
+      : (c.status === 'pending' ? `<strong>${dateFormatted}</strong> (Due 12 AM)` : dateFormatted);
 
     const safeLink = sanitizeUrl(c.link || 'https://unstop.com/practice/coding');
     const safeTitle = escapeHtml(c.title || `Day ${c.day} Challenge`);
@@ -711,7 +735,7 @@ function renderHistory(challenges = [], currentRun = [], stats = null) {
         <td><strong>Day ${c.day}</strong></td>
         <td>${safeTitle}</td>
         <td>${statusChip}</td>
-        <td>${solvedAt}</td>
+        <td>${dateDisplay}</td>
         <td><a class="table-link" href="${safeLink}" target="_blank" rel="noopener">🚀 Open Problem →</a></td>
       </tr>
     `;
