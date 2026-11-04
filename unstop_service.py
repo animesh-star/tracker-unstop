@@ -17,7 +17,12 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 BASE_DIR = Path(__file__).resolve().parent
-PYTHONW = sys.executable.replace("python.exe", "pythonw.exe")
+PYTHON_DIR = Path(r"C:\Users\ANIMESH\AppData\Local\Python\bin")
+if (PYTHON_DIR / "pythonw.exe").exists():
+    PYTHONW = str(PYTHON_DIR / "pythonw.exe")
+else:
+    PYTHONW = sys.executable.replace("python.exe", "pythonw.exe")
+SYNC_SCRIPT = BASE_DIR / "unstop_sync.py"
 TRACKER_SCRIPT = BASE_DIR / "unstop_tracker.py"
 NOTIFIER_SCRIPT = BASE_DIR / "unstop_laptop_notifier.py"
 STARTUP_DIR = Path(os.environ.get("APPDATA", "")) / r"Microsoft\Windows\Start Menu\Programs\Startup"
@@ -47,6 +52,15 @@ def start_services():
     else:
         print("✅ Tracker Server is already running on http://localhost:3000.")
 
+    # Start continuous live auto-sync watcher
+    print("🔄 Starting Always-On Unstop Browser Sync Watcher...")
+    subprocess.Popen(
+        [PYTHONW, str(SYNC_SCRIPT), "--watch"],
+        cwd=str(BASE_DIR),
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    )
+    print("✅ Live Watcher active: Auto-detects practice solves every 10s and syncs to cloud!")
+
     # Start laptop notifier listener
     print("📱 Starting Real-time Phone/Laptop Notifier...")
     subprocess.Popen(
@@ -57,11 +71,11 @@ def start_services():
     print("✅ Notifier connected in real time!")
 
 def stop_services():
-    """Stops all running tracker and notifier background processes."""
+    """Stops all running tracker, notifier, and sync background processes."""
     print("🛑 Stopping Unstop background services...")
     ps_cmd = """
 Get-CimInstance Win32_Process | Where-Object { 
-    $_.CommandLine -like "*unstop_tracker.py*" -or $_.CommandLine -like "*unstop_laptop_notifier.py*" 
+    $_.CommandLine -like "*unstop_tracker.py*" -or $_.CommandLine -like "*unstop_laptop_notifier.py*" -or $_.CommandLine -like "*unstop_sync.py*"
 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 """
     subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True)
@@ -77,11 +91,20 @@ def check_status():
     
     ps_cmd = """
 (Get-CimInstance Win32_Process | Where-Object { 
-    $_.CommandLine -like "*unstop_laptop_notifier.py*" 
+    $_.CommandLine -like "*unstop_sync.py*--watch*" 
 }).Count
 """
     res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True)
-    notifier_count = int(res.stdout.strip() or "0")
+    sync_count = int(res.stdout.strip() or "0")
+    print(f"🔄 Live Browser Watcher:      {'🟢 ACTIVE (Scanning Every 10s)' if sync_count > 0 else '🔴 OFFLINE'}")
+
+    ps_cmd2 = """
+(Get-CimInstance Win32_Process | Where-Object { 
+    $_.CommandLine -like "*unstop_laptop_notifier.py*" 
+}).Count
+"""
+    res2 = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd2], capture_output=True, text=True)
+    notifier_count = int(res2.stdout.strip() or "0")
     print(f"📱 Phone/Laptop Listener:     {'🟢 CONNECTED' if notifier_count > 0 else '🔴 OFFLINE'}")
     print(f"🔄 Auto-Start on Windows Boot: {'🟢 ENABLED' if VBS_STARTUP_PATH.exists() else '⚪ DISABLED'}")
     print("=" * 50 + "\n")
@@ -92,6 +115,7 @@ def install_autostart():
 WshShell.CurrentDirectory = "{BASE_DIR}"
 WshShell.Run """{PYTHONW}"" ""{TRACKER_SCRIPT}""", 0, False
 WshShell.Run """{PYTHONW}"" ""{NOTIFIER_SCRIPT}""", 0, False
+WshShell.Run """{PYTHONW}"" ""{SYNC_SCRIPT}"" --watch", 0, False
 '''
     try:
         STARTUP_DIR.mkdir(parents=True, exist_ok=True)

@@ -419,10 +419,34 @@ app.all(['/api/unstop/live-track', '/api/sync'], async (req, res) => {
     const auth = db.getAuthStatus();
     const challenge = db.getOrCreateTodayChallenge();
     const stats = db.getStats();
+
+    const solvedCount = stats.solved || 0;
+    const progressPercent = Math.min(100, Math.round((solvedCount / 30) * 100));
+
     res.json({
       success: true,
       authenticated: auth.authenticated,
       user: auth.user,
+      accountSummary: {
+        username: auth.username || 'animegos31002',
+        name: auth.user?.name || 'Animesh Goswami',
+        email: auth.email || 'animesh.goswami045@gmail.com',
+        profileUrl: auth.user?.profileUrl || 'https://unstop.com/u/animegos31002',
+        practiceUrl: auth.user?.practiceUrl || 'https://unstop.com/practice/coding',
+        howMuchDid: `${solvedCount} / 30 Quests Solved (${progressPercent}%)`,
+        solvedCount,
+        remainingCount: stats.remaining,
+        progressPercent,
+        currentStreak: stats.streak,
+        bestStreak: stats.best_streak,
+        streakStatus: stats.streak_status,
+        todayChallenge: challenge?.title || 'Daily Coding Quest',
+        todayStatus: challenge?.status || 'pending',
+        todayLink: challenge?.link || 'https://unstop.com/practice/coding',
+        solvedAt: challenge?.solved_at || null,
+        isTodaySolved: challenge?.status === 'solved',
+        lastSync: new Date().toISOString(),
+      },
       liveTracking: true,
       autoDetectActive: true,
       syncedAt: new Date().toISOString(),

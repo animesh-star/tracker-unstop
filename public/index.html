@@ -180,6 +180,68 @@
             <div class="milestone-fill" id="milestone-fill" style="width: 33%"></div>
           </div>
         </div>
+
+        <!-- Live Unstop Account Status & Real-time Progress Card -->
+        <div class="unstop-account-card" id="unstop-account-card">
+          <div class="account-card-header">
+            <div class="account-badge">
+              <span class="live-dot"></span>
+              <span class="account-badge-title">UNSTOP ACCOUNT LIVE STATUS</span>
+            </div>
+            <div class="account-actions">
+              <button class="btn-account-sync" id="btn-account-sync" onclick="triggerLiveUnstopSync()" title="Fetch & Refresh latest Unstop Account Status">
+                <span class="sync-icon" id="account-sync-icon">🔄</span>
+                <span id="account-sync-text">Sync Live Unstop</span>
+              </button>
+            </div>
+          </div>
+          
+          <div class="account-card-body">
+            <div class="account-profile-box">
+              <div class="account-avatar-circle" id="acc-avatar">AG</div>
+              <div class="account-meta">
+                <div class="account-user-title">
+                  <span class="account-user-name" id="acc-name">Animesh Goswami</span>
+                  <span class="verified-pill">✓ Linked Unstop ID</span>
+                </div>
+                <div class="account-links">
+                  <a href="https://unstop.com/u/animegos31002" target="_blank" rel="noopener" class="acc-handle" id="acc-handle">@animegos31002 ↗</a>
+                  <span class="acc-sep">•</span>
+                  <span class="acc-email" id="acc-email">animesh.goswami045@gmail.com</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="account-progress-grid">
+              <div class="acc-stat-box">
+                <span class="acc-stat-label">HOW MUCH I DID</span>
+                <div class="acc-stat-number"><span id="acc-solved-num">9</span> <span class="acc-stat-sub">/ 30 Days</span></div>
+                <div class="acc-mini-bar"><div class="acc-mini-fill" id="acc-progress-fill" style="width:30%"></div></div>
+                <span class="acc-stat-note" id="acc-progress-note">30% Journey Completed (21 Left)</span>
+              </div>
+
+              <div class="acc-stat-box">
+                <span class="acc-stat-label">CURRENT STATUS</span>
+                <div class="acc-stat-status" id="acc-current-status"><span class="status-chip chip-solved">✅ Day 9 Solved</span></div>
+                <span class="acc-stat-note" id="acc-status-note">Streak Protected for Today 🔥</span>
+              </div>
+
+              <div class="acc-stat-box">
+                <span class="acc-stat-label">STREAK & MAX RECORD</span>
+                <div class="acc-stat-number"><span id="acc-streak-num">9</span> <span class="acc-stat-sub">Days Active</span></div>
+                <span class="acc-stat-note" id="acc-best-note">🏆 Max Streak: 20 Days</span>
+              </div>
+
+              <div class="acc-stat-box">
+                <span class="acc-stat-label">LIVE TRACKING PLATFORM</span>
+                <a href="https://unstop.com/practice/coding" target="_blank" rel="noopener" class="acc-track-link">
+                  Coding Practice Platform ↗
+                </a>
+                <span class="acc-stat-note" id="acc-last-sync-note">🟢 Always-On Auto Detection Active</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 

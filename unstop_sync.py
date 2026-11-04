@@ -493,17 +493,43 @@ def fetch_today_task_from_vercel() -> Optional[Dict[str, Any]]:
     return None
 
 
-if __name__ == "__main__":
-    print("🔍 Testing Unstop Browser Activity Fetcher...")
-    act = fetch_unstop_activity_for_date()
-    if act:
-        print(f"✅ Found today's activity: {act['title']}")
-        print(f"   URL: {act['url']}")
-        print(f"   Time (IST): {act['time_iso']}")
-        print(f"   Duration: {act['duration_sec']:.1f}s, Visits: {act['visit_count']}")
-    else:
-        print("❌ No activity found for today.")
+def run_live_watch_loop(interval_sec: int = 10):
+    """
+    Always-On Live Watcher:
+    Continuously monitors browser history for Unstop coding practice activity every 10 seconds.
+    When a problem is completed or visited:
+    1. Extracts exact problem title & practice URL.
+    2. Marks today's challenge as solved and updates current streak.
+    3. Pushes immediate sync to Vercel (https://unstop-gold.vercel.app/api/cloud-sync).
+    4. Delivers instant celebration notifications.
+    """
+    print(f"🔄 [Live Watcher] Always-on live tracking active (scanning every {interval_sec}s)...")
+    while True:
+        try:
+            res = auto_sync_and_mark_completed()
+            if res.get("synced") and res.get("newly_solved"):
+                print(f"⚡ [Live Watcher] Successfully synced Day {res.get('day')}: {res.get('title')}!")
+            # Keep Vercel cloud synced
+            sync_to_cloud(force=False)
+        except Exception as e:
+            print(f"⚠️ [Live Watcher] Scan cycle note: {e}")
+        time.sleep(interval_sec)
 
-    print("\n⚡ Running Auto-Sync & Mark Completed...")
-    res = auto_sync_and_mark_completed()
-    print("Result:", json.dumps(res, indent=2))
+if __name__ == "__main__":
+    args = sys.argv[1:]
+    if "--watch" in args or "-w" in args or "--daemon" in args:
+        run_live_watch_loop(10)
+    else:
+        print("🔍 Testing Unstop Browser Activity Fetcher...")
+        act = fetch_unstop_activity_for_date()
+        if act:
+            print(f"✅ Found today's activity: {act['title']}")
+            print(f"   URL: {act['url']}")
+            print(f"   Time (IST): {act['time_iso']}")
+            print(f"   Duration: {act['duration_sec']:.1f}s, Visits: {act['visit_count']}")
+        else:
+            print("❌ No activity found for today.")
+
+        print("\n⚡ Running Auto-Sync & Mark Completed...")
+        res = auto_sync_and_mark_completed()
+        print("Result:", json.dumps(res, indent=2))
