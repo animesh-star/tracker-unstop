@@ -113,11 +113,11 @@
       "day": 10,
       "title": "Day 10: Dijkstra's Algorithm & Shortest Paths",
       "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
+      "status": "solved",
       "reminded_at": null,
-      "solved_at": null,
+      "solved_at": "2026-11-05T02:14:00.000000+05:30",
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": null,
+      "assigned_date": "2026-11-05",
       "missed_at": null
     },
     {

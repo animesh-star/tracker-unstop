@@ -263,12 +263,15 @@ function getOrCreateTodayChallenge() {
   const today = todayDateStr();
   const challenges = db.challenges || [];
 
-  // 1. First check if any challenge was solved TODAY
-  const todaySolved = challenges.find(c => {
+  // 1. First check if any challenge was solved TODAY (pick the highest day completed)
+  const todaySolvedList = challenges.filter(c => {
     const sDate = c.solved_at ? c.solved_at.split('T')[0] : null;
     return (sDate === today || c.assigned_date === today) && c.status === 'solved';
   });
-  if (todaySolved) return todaySolved;
+  if (todaySolvedList.length > 0) {
+    todaySolvedList.sort((a, b) => b.day - a.day);
+    return todaySolvedList[0];
+  }
 
   // 2. Check if a challenge is already assigned for today
   let todayAssigned = challenges.find(c => c.assigned_date === today);
@@ -405,31 +408,14 @@ function calculateAllTimeBestStreak(db) {
 }
 
 function getStreakChainDetails(db) {
-  const today = todayDateStr();
   const challenges = db.challenges || [];
   const cmap = {};
   challenges.forEach(c => { cmap[c.day] = c; });
 
-  let current = challenges.find(c => {
-    const sDate = c.solved_at ? c.solved_at.split('T')[0] : null;
-    return sDate === today && c.status === 'solved';
-  });
-  if (!current) {
-    current = challenges.find(c => c.status === 'pending');
-  }
-  if (!current) {
-    const maxSolved = challenges.reduce((max, c) => (c.status === 'solved' ? Math.max(max, c.day || 0) : max), 0);
-    current = cmap[Math.min(maxSolved + 1, 30)];
-  }
-  if (!current) current = challenges[0] || null;
-
-  const currentDay = current ? current.day : 1;
-  const todayStatus = current ? current.status : 'pending';
-  const startDay = todayStatus === 'solved' ? currentDay : currentDay - 1;
-
+  // Calculate unbroken streak sequentially from Day 1
   let streak = 0;
   const chain = [];
-  for (let d = startDay; d > 0; d--) {
+  for (let d = 1; d <= 30; d++) {
     const c = cmap[d];
     if (c && c.status === 'solved') {
       streak++;
@@ -442,10 +428,10 @@ function getStreakChainDetails(db) {
   let streakStartedDay = null;
   let streakStartedDate = null;
   let streakDaysRunning = 0;
-  let remaining = 30; // Resets back to 30 when streak breaks!
+  let remaining = 30;
 
   if (streak > 0 && chain.length > 0) {
-    const oldest = chain[chain.length - 1];
+    const oldest = chain[0];
     streakStartedDay = oldest.day;
     const rawDate = oldest.solved_at || oldest.created_at || '';
     streakStartedDate = rawDate.includes('T') ? rawDate.split('T')[0] : (rawDate || nowISO().split('T')[0]);
