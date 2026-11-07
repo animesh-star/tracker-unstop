@@ -1565,20 +1565,15 @@ if __name__ == "__main__":
         )
         sys.exit(0)
     elif "--first-open" in args or "--check" in args or "--notify" in args:
-        force_flag = "--force" in args or "-f" in args
+        force_flag = True
         print("\n☀️ [Laptop Notification Check] Checking today's challenge status...")
         data = get_today_status()
         c = data.get("challenge", {})
         status = c.get("status", "pending")
         day = c.get("day", 1)
 
-        if status == "solved" and not force_flag:
-            print(f"✅ Day {day} challenge is already completed and marked as SOLVED!")
-            print("🔕 Notification is suppressed per strict policy (zero popups/toasts).\n")
-            sys.exit(0)
-
-        print(f"🔔 Day {day} challenge is NOT completed ({status.upper()})! Pushing notification...")
-        triggered = trigger_laptop_open_alert(force=force_flag, reason="CLI Command Check", is_command=True)
+        print(f"🔔 Firing notification for Day {day} ({status.upper()})...")
+        triggered = trigger_laptop_open_alert(force=True, reason="CLI Command Check", is_command=True)
         if triggered:
             print("✅ Notification delivered successfully to your laptop screen (Popup Card & Windows Toast)!\n")
         else:
@@ -1618,21 +1613,14 @@ if __name__ == "__main__":
         )
         sys.exit(0)
     elif "--wake" in args or "--test-wake" in args:
-        force_flag = "--force" in args
-        print("\n💻 [Laptop Wake Check] Checking challenge status on laptop open...")
+        print("\n💻 [Laptop Wake Check] Triggering challenge notification on laptop open...")
         data = get_today_status()
         c = data.get("challenge", {})
         day = c.get("day", 1)
         status = c.get("status", "pending")
 
-        if status == "solved" and not force_flag:
-            print(f"✅ Day {day} is already completed & marked as SOLVED!")
-            print("🔕 Active Tracking: Laptop wake notification is completely SUPPRESSED.")
-            print("✨ Zero popups or banners will appear on your home screen.\n")
-            sys.exit(0)
-
-        print(f"⚡ Day {day} is NOT completed yet ({status.upper()})! Firing home screen notification...")
-        trigger_laptop_open_alert(force=force_flag, reason="Wake Test", is_command=True)
+        print(f"⚡ Firing home screen notification for Day {day} ({status.upper()})...")
+        trigger_laptop_open_alert(force=True, reason="Wake Test", is_command=True)
         print("✅ Notification delivered to your laptop home screen!\n")
         sys.exit(0)
 

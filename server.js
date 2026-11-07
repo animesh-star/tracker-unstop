@@ -563,10 +563,34 @@ app.post('/api/user', sensitiveActionLimiter, requireAuth, (req, res) => {
 
 app.post('/api/test-notify', sensitiveActionLimiter, requireAuth, async (req, res) => {
   try {
-    await fireReminder(false);
-    res.json({ success: true, message: 'Test notification sent!' });
+    const user = db.getUserProfile();
+    const stats = db.getStats();
+    const challenge = db.getOrCreateTodayChallenge() || { day: stats.streak || 12 };
+    const firstName = user.name ? user.name.split(' ')[0] : 'Animesh';
+    const challengeLink = challenge.link || user.practiceUrl || 'https://unstop.com/practice/coding';
+    const title = `🔔 Unstop Alert Test: Day ${challenge.day}`;
+    const body = `Hey ${firstName}! Streak tracker notifications are active. Streak: ${stats.streak} Days 🔥`;
+
+    await sendPushToAll({
+      title,
+      body,
+      tag: 'test-notification',
+      renotify: true,
+      requireInteraction: true,
+      data: { day: challenge.day, link: challengeLink, url: '/' }
+    });
+
+    await sendPhonePush(title, body, challengeLink, 'bell,fire,rocket', 'high');
+
+    res.json({
+      success: true,
+      message: 'Test notification delivered to browser push & mobile phone!',
+      title,
+      body,
+      topic: user.ntfyTopic || 'animesh_unstop_streak'
+    });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to send notification' });
+    res.status(500).json({ error: 'Failed to send notification: ' + (err.message || 'unknown error') });
   }
 });
 

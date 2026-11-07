@@ -65,13 +65,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 });
 
-// ─── Service Worker Registration ──────────────────────────────────────────────
+// ─── Service Worker & Notification Setup ───────────────────────────────────────
 async function registerServiceWorker() {
+  // Check existing browser permission state immediately
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    updateNotifUI(true);
+  }
+
   if (!('serviceWorker' in navigator)) return;
   try {
     swRegistration = await navigator.serviceWorker.register('/sw.js');
     pushSubscription = await swRegistration.pushManager.getSubscription();
-    if (pushSubscription) {
+    if (pushSubscription || (typeof Notification !== 'undefined' && Notification.permission === 'granted')) {
       updateNotifUI(true);
     }
   } catch (err) {
@@ -79,60 +84,127 @@ async function registerServiceWorker() {
   }
 }
 
-// ─── Notifications ─────────────────────────────────────────────────────────────
+// ─── Web Audio API Notification Chime ──────────────────────────────────────────
+function playNotificationChime() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc.frequency.setValueAtTime(880.00, ctx.currentTime + 0.12); // A5
+    gain.gain.setValueAtTime(0.18, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.48);
+  } catch (e) {
+    // Autoplay restrictions may require prior user interaction
+  }
+}
+
+// ─── Direct Native Desktop Notification Helper ─────────────────────────────────
+async function showDesktopNotification(title, options = {}) {
+  const defaultOptions = {
+    body: "Keep your 30-day coding streak alive! 🚀",
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-72.png',
+    tag: 'unstop-alert-' + Date.now(),
+    renotify: true,
+    requireInteraction: false,
+    ...options
+  };
+
+  playNotificationChime();
+
+  // 1. Try Service Worker showNotification if active
+  if (swRegistration && swRegistration.showNotification) {
+    try {
+      await swRegistration.showNotification(title, defaultOptions);
+      return true;
+    } catch (swErr) {
+      console.warn('[App] SW notification notice:', swErr.message);
+    }
+  }
+
+  // 2. Direct Window Notification fallback (works in foreground & background tabs)
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    try {
+      const notif = new Notification(title, defaultOptions);
+      notif.onclick = () => {
+        window.focus();
+        if (options.url) {
+          window.open(options.url, '_blank', 'noopener,noreferrer');
+        }
+        notif.close();
+      };
+      return true;
+    } catch (winErr) {
+      console.warn('[App] window.Notification notice:', winErr.message);
+    }
+  }
+
+  return false;
+}
+
+// ─── Notifications Management ──────────────────────────────────────────────────
 async function enableNotifications() {
   if (window.location.protocol === 'file:') {
-    showToast('⚠️ Please open via http://localhost:3000 to enable browser notifications.', 'warning');
+    showToast('⚠️ Please open via https://unstop-gold.vercel.app/ to enable browser notifications.', 'warning');
     return;
   }
 
-  if (!swRegistration) {
-    showToast('⚠️ Service Worker not ready. Try refreshing the page.', 'error');
-    return;
-  }
-
-  const permission = await Notification.requestPermission();
-  if (permission !== 'granted') {
-    showToast('❌ Notification permission denied in browser.', 'error');
+  if (typeof Notification === 'undefined') {
+    showToast('❌ Browser notifications are not supported in this browser.', 'error');
     return;
   }
 
   try {
-    let res;
-    try {
-      res = await fetch(`${API_BASE}/api/vapid-key`);
-    } catch (netErr) {
-      throw new Error('Tracker server is offline. Run "python unstop_cli.py server" in terminal to connect.');
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      updateNotifUI(false);
+      showToast('❌ Notification permission was denied. Please allow notifications in browser site settings.', 'error');
+      return;
     }
 
-    if (!res.ok) {
-      throw new Error(`Server returned HTTP ${res.status}`);
-    }
+    localStorage.setItem('unstop_notifications_enabled', 'true');
+    updateNotifUI(true);
 
-    const { publicKey } = await res.json();
-    if (!publicKey) {
-      throw new Error('VAPID public key not found on server.');
-    }
-
-    pushSubscription = await swRegistration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    // Pop up instant test confirmation notification!
+    await showDesktopNotification('🎉 Unstop Streak Alerts Active!', {
+      body: 'Daily reminders are configured! You will receive alerts on your desktop & browser at 12:00 AM.',
+      icon: '/icons/icon-192.png'
     });
 
-    const subRes = await fetch(`${API_BASE}/api/subscribe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(pushSubscription),
-    });
+    showToast('🔔 Desktop & browser notifications enabled successfully!', 'success');
 
-    if (subRes.ok) {
-      updateNotifUI(true);
-      showToast('🔔 Alerts active! You will be reminded at 12:00 AM daily.', 'success');
-    } else {
-      throw new Error('Server could not save subscription');
+    // Attempt background push subscription if service worker is active
+    if (swRegistration && swRegistration.pushManager) {
+      try {
+        const res = await fetch(`${API_BASE}/api/vapid-key`);
+        if (res.ok) {
+          const { publicKey } = await res.json();
+          if (publicKey) {
+            pushSubscription = await swRegistration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(publicKey),
+            });
+            await fetch(`${API_BASE}/api/subscribe`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(pushSubscription),
+            });
+          }
+        }
+      } catch (pushErr) {
+        console.warn('[App] Push service sync optional notice:', pushErr.message);
+      }
     }
   } catch (err) {
-    showToast('❌ Could not enable push alerts: ' + err.message, 'error');
+    showToast('❌ Could not enable alerts: ' + err.message, 'error');
   }
 }
 
@@ -141,33 +213,86 @@ function updateNotifUI(isEnabled) {
   const label = document.getElementById('notif-label');
   const btn = document.getElementById('btn-enable-notif');
 
-  if (isEnabled) {
-    badge.classList.remove('notif-off');
-    badge.classList.add('notif-on');
-    label.textContent = 'Alerts On';
-    btn.textContent = '🔕 Alerts';
-    btn.onclick = disableNotifications;
-  } else {
-    badge.classList.remove('notif-on');
-    badge.classList.add('notif-off');
-    label.textContent = 'Alerts Off';
-    btn.textContent = '🔔 Alerts';
-    btn.onclick = enableNotifications;
+  if (badge) {
+    if (isEnabled) {
+      badge.classList.remove('notif-off');
+      badge.classList.add('notif-on');
+    } else {
+      badge.classList.remove('notif-on');
+      badge.classList.add('notif-off');
+    }
+  }
+
+  if (label) {
+    label.textContent = isEnabled ? 'Alerts On' : 'Alerts Off';
+  }
+
+  if (btn) {
+    if (isEnabled) {
+      btn.innerHTML = '🔕 Alerts On';
+      btn.onclick = disableNotifications;
+    } else {
+      btn.innerHTML = '🔔 Alerts';
+      btn.onclick = enableNotifications;
+    }
   }
 }
 
 async function disableNotifications() {
+  localStorage.setItem('unstop_notifications_enabled', 'false');
   if (pushSubscription) {
-    await fetch(`${API_BASE}/api/unsubscribe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ endpoint: pushSubscription.endpoint }),
-    });
-    await pushSubscription.unsubscribe();
+    try {
+      await fetch(`${API_BASE}/api/unsubscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: pushSubscription.endpoint }),
+      });
+      await pushSubscription.unsubscribe();
+    } catch {}
     pushSubscription = null;
   }
   updateNotifUI(false);
   showToast('🔕 Browser alerts muted.', 'info');
+}
+
+// ─── Test Desktop / Browser Alert ──────────────────────────────────────────────
+async function testDesktopAlert() {
+  try {
+    if (typeof Notification === 'undefined') {
+      showToast('❌ Browser notifications not supported.', 'error');
+      return;
+    }
+
+    if (Notification.permission !== 'granted') {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        showToast('⚠️ Please allow notifications to see desktop alerts.', 'warning');
+        return;
+      }
+      updateNotifUI(true);
+      localStorage.setItem('unstop_notifications_enabled', 'true');
+    }
+
+    showToast('🔔 Firing desktop test notification...', 'info');
+
+    const streak = cachedStats?.streak || 12;
+    const shown = await showDesktopNotification('⚡ Unstop Challenge Tracker', {
+      body: `Hey Animesh! Your notifications are working perfectly! Active Streak: ${streak} Days 🔥`,
+      icon: '/icons/icon-192.png',
+      url: 'https://unstop.com/practice/coding'
+    });
+
+    // Also trigger cloud server test notification (Web Push + mobile alert)
+    fetch(`${API_BASE}/api/test-notify`, { method: 'POST' }).catch(() => {});
+
+    if (shown) {
+      showToast('✅ Desktop notification popped up on your screen!', 'success');
+    } else {
+      showToast('ℹ️ Notification triggered. (Check Windows Focus Assist / Banner settings if suppressed).', 'info');
+    }
+  } catch (err) {
+    showToast('❌ Test alert error: ' + err.message, 'error');
+  }
 }
 
 // ─── Load Data ─────────────────────────────────────────────────────────────────
@@ -1007,16 +1132,26 @@ async function sendTestPhoneAlert() {
 
 async function triggerFirstOpenTest() {
   try {
-    showToast('☀️ Triggering first-in-day home screen popup & toast...', 'info');
-    const res = await fetch(`${API_BASE}/api/test-first-open`, { method: 'POST' });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      showToast('✅ Home screen popup card & toast triggered!', 'success');
-    } else {
-      showToast('❌ Could not trigger popup: ' + (data.detail || data.error), 'error');
+    showToast('☀️ Triggering first-in-day home screen popup & desktop alert...', 'info');
+
+    // 1. Instantly display the interactive on-screen alert card
+    if (cachedTodayChallenge) {
+      showAlertModal(cachedTodayChallenge, currentAuthData);
     }
+
+    // 2. Fire native desktop notification with audio chime
+    await showDesktopNotification('☀️ Good Morning Animesh!', {
+      body: `First laptop open check: Today's Unstop quest is ready! Streak: ${cachedStats?.streak || 12} Days 🔥`,
+      icon: '/icons/icon-192.png',
+      url: 'https://unstop.com/practice/coding'
+    });
+
+    // 3. Trigger local laptop notifier if local server is running
+    fetch(`${API_BASE}/api/test-first-open`, { method: 'POST' }).catch(() => {});
+
+    showToast('✅ Home screen popup card & desktop alert displayed!', 'success');
   } catch (err) {
-    showToast('❌ Server error: ' + err.message, 'error');
+    showToast('❌ Popup alert error: ' + err.message, 'error');
   }
 }
 

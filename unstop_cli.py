@@ -422,9 +422,8 @@ def send_laptop_notification(force: bool = False):
     solved, cur_day = is_today_completed()
     if solved and not force:
         print(f"\n✅ Day {cur_day} is already completed & marked as SOLVED!")
-        print("🔕 Laptop notification will not pop up.")
-        print("💡 (To force test anyway, run: python unstop_cli.py laptop --force)\n")
-        return
+        print("🔔 Delivering verified status notification to laptop screen...")
+        force = True
 
     day = cur_day
     first_name = "Animesh"
@@ -462,8 +461,8 @@ def send_laptop_notification(force: bool = False):
         day = c.get("day", 1)
         if status == "solved" and not force:
             print(f"\n✅ Day {day} challenge is already completed and marked as SOLVED!")
-            print("🔕 Notification is suppressed per strict policy (zero popups/toasts).\n")
-            return
+            print("🔔 Firing verified status notification to laptop screen...")
+            force = True
         print(f"\n🔔 Day {day} challenge is NOT completed ({status.upper()})! Firing notification...")
         triggered = trigger_laptop_open_alert(force=force, reason="CLI laptop command", is_command=True)
         if triggered:
