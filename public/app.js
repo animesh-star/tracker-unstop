@@ -8,7 +8,15 @@ let pushSubscription = null;
 let countdownInterval = null;
 let remindedAt = null;
 
-const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
+const API_BASE = window.location.protocol === 'file:' ? 'https://unstop-gold.vercel.app' : '';
+
+function todayDateISO() {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 // ─── Security Helpers ──────────────────────────────────────────────────────────
 
@@ -455,7 +463,7 @@ async function loadData(silent = false) {
       if (liveLabel) liveLabel.textContent = 'Live Sync: Reconnecting...';
     }
     if (!silent) {
-      showToast('❌ Could not connect to server. Is it running?', 'error');
+      showToast('⚠️ Syncing live data: ' + (err.message || 'Connecting...'), 'warning');
     }
   }
 }
