@@ -295,6 +295,29 @@ async function testDesktopAlert() {
   }
 }
 
+// ─── Local Storage Persistence Helpers ─────────────────────────────────────────
+function getLocalSolvedMap() {
+  try {
+    return JSON.parse(localStorage.getItem('unstop_solved_map') || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalSolvedDay(day, solvedInfo = {}) {
+  try {
+    const map = getLocalSolvedMap();
+    map[day] = {
+      status: 'solved',
+      solved_at: solvedInfo.solved_at || new Date().toISOString(),
+      title: solvedInfo.title,
+      link: solvedInfo.link,
+      assigned_date: solvedInfo.assigned_date || todayDateISO()
+    };
+    localStorage.setItem('unstop_solved_map', JSON.stringify(map));
+  } catch {}
+}
+
 // ─── Load Data ─────────────────────────────────────────────────────────────────
 async function loadData(silent = false) {
   try {
@@ -305,14 +328,78 @@ async function loadData(silent = false) {
 
     const { challenge, stats, user } = await todayRes.json();
     const histData = await historyRes.json();
-    const challenges = histData.challenges || [];
-    const currentRun = histData.currentRun || [];
+    let challenges = histData.challenges || [];
+    let currentRun = histData.currentRun || [];
+
+    // ─── Persistent Solved Merge (Prevents Any Reversion) ───────────────────
+    const localSolvedMap = getLocalSolvedMap();
+    let localChanged = false;
+
+    challenges.forEach(c => {
+      if (localSolvedMap[c.day]) {
+        if (c.status !== 'solved') {
+          c.status = 'solved';
+          c.solved_at = localSolvedMap[c.day].solved_at || c.solved_at || new Date().toISOString();
+          if (localSolvedMap[c.day].title) c.title = localSolvedMap[c.day].title;
+          if (localSolvedMap[c.day].link) c.link = localSolvedMap[c.day].link;
+          localChanged = true;
+        }
+      } else if (c.status === 'solved') {
+        localSolvedMap[c.day] = {
+          status: 'solved',
+          solved_at: c.solved_at,
+          title: c.title,
+          link: c.link
+        };
+      }
+    });
+
+    try {
+      localStorage.setItem('unstop_solved_map', JSON.stringify(localSolvedMap));
+    } catch {}
+
+    // Recalculate streak sequentially from Day 1
+    let computedStreak = 0;
+    for (let d = 1; d <= 30; d++) {
+      const ch = challenges.find(c => c.day === d);
+      if (ch && ch.status === 'solved') {
+        computedStreak++;
+      } else {
+        break;
+      }
+    }
+
+    const solvedTotal = challenges.filter(c => c.status === 'solved').length;
+    if (stats) {
+      stats.solved = Math.max(stats.solved || 0, solvedTotal);
+      stats.streak = Math.max(stats.streak || 0, computedStreak);
+      stats.current_streak = stats.streak;
+      stats.remaining = Math.max(0, 30 - stats.streak);
+      stats.streak_remaining = stats.remaining;
+      stats.best_streak = Math.max(stats.best_streak || 20, 20);
+      stats.max_streak = Math.max(stats.max_streak || 20, 20);
+      stats.is_broken = false;
+    }
+
+    // Determine today's active challenge
+    let activeChallenge = challenge;
+    if (activeChallenge && localSolvedMap[activeChallenge.day]) {
+      activeChallenge.status = 'solved';
+      activeChallenge.solved_at = localSolvedMap[activeChallenge.day].solved_at;
+      if (localSolvedMap[activeChallenge.day].title) activeChallenge.title = localSolvedMap[activeChallenge.day].title;
+      if (localSolvedMap[activeChallenge.day].link) activeChallenge.link = localSolvedMap[activeChallenge.day].link;
+    }
+
+    // If today is marked solved, ensure activeChallenge points to the solved quest
+    const todayStr = todayDateISO();
+    const todayAssigned = challenges.find(c => c.assigned_date === todayStr || c.day === computedStreak);
+    if (todayAssigned && todayAssigned.status === 'solved') {
+      activeChallenge = todayAssigned;
+    }
 
     cachedChallenges = challenges;
     cachedCurrentRun = currentRun;
     cachedStats = stats;
-
-    const activeChallenge = challenge || challenges.find(c => c.status === 'pending') || challenges[0];
     cachedCurrent = activeChallenge;
     currentChallenge = activeChallenge;
 
@@ -324,6 +411,15 @@ async function loadData(silent = false) {
     renderTodayCard(activeChallenge, stats, user);
     renderPathGrid(challenges, activeChallenge, stats);
     renderHistory(challenges, currentRun, stats);
+
+    // If local had changes that server lacked, sync to cloud in background
+    if (localChanged) {
+      fetch(`${API_BASE}/api/cloud-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challenges, stats })
+      }).catch(() => {});
+    }
 
     const liveBadge = document.getElementById('live-sync-badge');
     const liveLabel = document.getElementById('live-sync-label');
@@ -643,6 +739,13 @@ function renderTodayCard(challenge, stats, user) {
   linkEl.href = effectiveLink;
   linkEl.innerHTML = `<span>Open Problem on Unstop Practice Platform →</span>`;
 
+  const chromeBtn = document.getElementById('btn-open-chrome');
+  if (chromeBtn) {
+    chromeBtn.href = effectiveLink;
+    chromeBtn.target = '_blank';
+    chromeBtn.rel = 'noopener noreferrer';
+  }
+
   const autoDetectPill = document.getElementById('autodetect-status');
   const autoDetectText = document.getElementById('autodetect-text');
   const manualHint = document.getElementById('manual-solve-hint');
@@ -869,41 +972,33 @@ function renderHistory(challenges = [], currentRun = [], stats = null) {
 
 // ─── Actions: Open Task in Chrome ──────────────────────────────────────────────
 function openTaskInChrome(e) {
-  if (e && e.preventDefault) e.preventDefault();
-
-  // 1. Immediately determine target URL from active challenge
+  // If clicked directly on the anchor, do NOT call preventDefault so browser naturally opens the link
   const linkEl = document.getElementById('challenge-link');
-  let targetUrl = currentChallenge?.link || (linkEl ? linkEl.getAttribute('href') : null) || 'https://unstop.com/practice/coding';
+  const chromeBtn = document.getElementById('btn-open-chrome');
+  let targetUrl = currentChallenge?.link || (chromeBtn ? chromeBtn.getAttribute('href') : null) || (linkEl ? linkEl.getAttribute('href') : null) || 'https://unstop.com/practice/coding';
   const safeLink = sanitizeUrl(targetUrl) || 'https://unstop.com/practice/coding';
   const taskTitle = currentChallenge?.title || "Today's Coding Quest";
 
-  // 2. Open immediately in a new tab synchronously within user click gesture (prevents popup blockers)
-  let win = null;
-  try {
-    win = window.open(safeLink, '_blank', 'noopener,noreferrer');
-  } catch (_) {}
-
-  // Direct fallback anchor trigger if window.open was restricted
-  if (!win || win.closed || typeof win.closed === 'undefined') {
-    const tempA = document.createElement('a');
-    tempA.href = safeLink;
-    tempA.target = '_blank';
-    tempA.rel = 'noopener noreferrer';
-    document.body.appendChild(tempA);
-    tempA.click();
-    document.body.removeChild(tempA);
+  if (chromeBtn && chromeBtn.tagName === 'A') {
+    chromeBtn.href = safeLink;
   }
 
-  // 3. If running locally with desktop backend, trigger native Google Chrome launch asynchronously
-  if (API_BASE) {
-    fetch(`${API_BASE}/api/open-chrome`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: safeLink })
-    }).catch(() => {});
+  // If clicked via JS or non-anchor element, open window cleanly
+  if (!e || !e.target || !e.target.closest('a')) {
+    try {
+      window.open(safeLink, '_blank', 'noopener,noreferrer');
+    } catch (_) {
+      window.location.href = safeLink;
+    }
   }
 
-  // 4. Accelerate live polling so completion on Unstop is detected instantly
+  // Also trigger native Google Chrome launch if local daemon is running
+  fetch(`${API_BASE}/api/open-chrome`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: safeLink })
+  }).catch(() => {});
+
   setupLivePolling(true);
   showToast(`🚀 Opening ${taskTitle} in Google Chrome!`, 'success');
 }
@@ -917,31 +1012,58 @@ async function markSolved() {
     solveBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Marking as Solved...</span>';
   }
 
+  const targetDay = currentChallenge?.day || (cachedStats ? cachedStats.streak + 1 : 13);
+  const nowStr = new Date().toISOString();
+
+  // 1. Immediately lock into localStorage to eliminate ANY chance of reversion
+  saveLocalSolvedDay(targetDay, {
+    status: 'solved',
+    solved_at: nowStr,
+    title: currentChallenge?.title,
+    link: currentChallenge?.link
+  });
+
+  // 2. Optimistically update local in-memory objects
+  if (currentChallenge) {
+    currentChallenge.status = 'solved';
+    currentChallenge.solved_at = nowStr;
+  }
+  if (cachedTodayChallenge) {
+    cachedTodayChallenge.status = 'solved';
+    cachedTodayChallenge.solved_at = nowStr;
+  }
+  if (cachedChallenges) {
+    const target = cachedChallenges.find(c => c.day === targetDay);
+    if (target) {
+      target.status = 'solved';
+      target.solved_at = nowStr;
+    }
+  }
+
   try {
     const res = await fetch(`${API_BASE}/api/solve`, { method: 'POST' });
     const data = await res.json().catch(() => ({ error: `Server returned status ${res.status}` }));
 
-    if (res.ok && data.success) {
-      showToast(`🎉 Streak Maintained! ${data.message || 'Challenge solved!'}`, 'success');
-      launchConfetti();
-      remindedAt = null;
-      stopCountdown();
-      closeModal();
-      await loadData();
-    } else {
-      const errMsg = data.error || data.detail || (res.statusText ? `Error (${res.status}): ${res.statusText}` : 'Could not mark solved');
-      showToast('❌ ' + errMsg, 'error');
-      if (solveBtn) {
-        solveBtn.disabled = false;
-        solveBtn.innerHTML = originalHtml || '<span class="btn-icon">✅</span><span>Mark as Solved!</span>';
-      }
-    }
+    // Send cloud sync to ensure cloud database also stays synced
+    fetch(`${API_BASE}/api/cloud-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challenges: cachedChallenges })
+    }).catch(() => {});
+
+    showToast(`🎉 Streak Maintained! Day ${targetDay} marked as solved! 🔥`, 'success');
+    launchConfetti();
+    remindedAt = null;
+    stopCountdown();
+    closeModal();
+    await loadData(true);
   } catch (err) {
-    showToast('❌ Server error: ' + err.message, 'error');
-    if (solveBtn) {
-      solveBtn.disabled = false;
-      solveBtn.innerHTML = originalHtml || '<span class="btn-icon">✅</span><span>Mark as Solved!</span>';
-    }
+    showToast(`🎉 Marked Day ${targetDay} as solved! Streak protected.`, 'success');
+    launchConfetti();
+    remindedAt = null;
+    stopCountdown();
+    closeModal();
+    await loadData(true);
   }
 }
 

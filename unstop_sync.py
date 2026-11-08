@@ -355,11 +355,11 @@ def auto_sync_and_mark_completed(target_date: Optional[str] = None, mark_solved:
         if newly_solved:
             send_completion_notification(day, new_title, streak, activity.get("url"))
 
-        # Automatically push update to live website in background thread
+        # Automatically push update to live website synchronously so cloud stays updated
         try:
-            threading.Thread(target=sync_to_cloud, kwargs={"force": bool(newly_solved)}, daemon=True).start()
-        except Exception:
-            pass
+            sync_to_cloud(force=bool(newly_solved))
+        except Exception as e:
+            print(f"Cloud sync notice: {e}")
 
         return {
             "synced": True,
