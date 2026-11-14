@@ -1020,7 +1020,7 @@ async function markSolved() {
     solveBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Marking as Solved...</span>';
   }
 
-  const targetDay = currentChallenge?.day || (cachedStats ? cachedStats.streak + 1 : 13);
+  const targetDay = currentChallenge?.day || (cachedStats ? cachedStats.streak + 1 : 19);
   const nowStr = new Date().toISOString();
 
   // 1. Immediately lock into localStorage to eliminate ANY chance of reversion

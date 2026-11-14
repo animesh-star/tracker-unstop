@@ -373,6 +373,30 @@ app.get('/api/challenges', (req, res) => {
   res.json({ challenges, currentRun, stats, user });
 });
 
+// ─── Complete Database API & Explorer ─────────────────────────────────────────
+app.get('/api/database', (req, res) => {
+  const challenges = db.getAllChallenges();
+  const currentRun = db.getCurrentRunChallenges();
+  const stats = db.getStats();
+  const user = db.getUserProfile();
+  res.json({
+    database: 'unstop_challenge_tracker',
+    status: 'online',
+    exported_at: new Date().toISOString(),
+    stats,
+    user,
+    total_challenges: challenges.length,
+    solved_count: challenges.filter(c => c.status === 'solved').length,
+    upcoming_count: challenges.filter(c => c.status !== 'solved').length,
+    challenges,
+    currentRun
+  });
+});
+
+app.get(['/database', '/data'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'database.html'));
+});
+
 app.get('/api/roadmap', (req, res) => {
   const roadmap = db.get30DayRoadmap();
   const stats = db.getStats();

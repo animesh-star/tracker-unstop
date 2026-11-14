@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>💾 Unstop Database & Records Explorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      padding: 1.5rem 1rem 3rem;
+    }
+    .db-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .db-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding: 1.25rem 1.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 1.5rem;
+      box-shadow: var(--shadow);
+    }
+    .db-title-group h1 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 0.25rem;
+    }
+    .db-title-group p {
+      color: var(--text-2);
+      font-size: 0.9rem;
+    }
+    .db-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: center;
+    }
+    .db-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.55rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      transition: all 0.2s ease;
+    }
+    .db-btn-primary {
+      background: var(--duo-blue);
+      color: #fff;
+      border-color: var(--duo-blue-shadow);
+    }
+    .db-btn-primary:hover {
+      background: #009ce3;
+      transform: translateY(-1px);
+    }
+    .db-btn-secondary {
+      background: var(--surface-2);
+      color: var(--text);
+    }
+    .db-btn-secondary:hover {
+      background: var(--surface-3);
+      border-color: var(--border-hover);
+    }
+    .db-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .db-stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.2rem;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .db-stat-card .label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-2);
+      font-weight: 700;
+    }
+    .db-stat-card .val {
+      font-size: 1.7rem;
+      font-weight: 900;
+      color: var(--text);
+    }
+    .db-stat-card .sub {
+      font-size: 0.8rem;
+      color: var(--duo-green);
+      font-weight: 600;
+    }
+    .db-content-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      box-shadow: var(--shadow);
+      margin-bottom: 1.5rem;
+    }
+    .db-card-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.2rem;
+      padding-bottom: 0.8rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .filter-tabs {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .filter-tab {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text-2);
+      padding: 0.4rem 0.8rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .filter-tab.active {
+      background: var(--duo-green);
+      color: #000;
+      border-color: var(--duo-green-shadow);
+    }
+    .db-table-wrap {
+      overflow-x: auto;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+    .db-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      text-align: left;
+    }
+    .db-table th {
+      background: var(--surface-2);
+      color: var(--text-2);
+      padding: 0.75rem 1rem;
+      font-weight: 700;
+      border-bottom: 1px solid var(--border);
+    }
+    .db-table td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .db-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .chip-solved {
+      background: rgba(88, 204, 2, 0.15);
+      color: var(--duo-green);
+      border: 1px solid rgba(88, 204, 2, 0.3);
+    }
+    .chip-upcoming {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-2);
+      border: 1px solid var(--border);
+    }
+    .json-box {
+      background: #080c16;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: #7dd3fc;
+      max-height: 400px;
+      overflow: auto;
+      white-space: pre;
+    }
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      background: var(--surface-3);
+      color: var(--text);
+      padding: 0.75rem 1.25rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-lg);
+      font-weight: 600;
+      font-size: 0.9rem;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.3s ease;
+      z-index: 9999;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+  <div class="db-container">
+    <!-- Top Header -->
+    <header class="db-header">
+      <div class="db-title-group">
+        <h1>💾 Unstop Database & Records Explorer</h1>
+        <p>Live synchronized challenge completions, timestamps, practice links & streak logs</p>
+      </div>
+      <div class="db-actions">
+        <a href="/" class="db-btn db-btn-secondary">← Back to Tracker App</a>
+        <a href="/api/database" target="_blank" class="db-btn db-btn-secondary" title="Direct raw JSON endpoint">⚡ Raw JSON API</a>
+        <button class="db-btn db-btn-secondary" onclick="copyDatabaseJson()">📋 Copy JSON</button>
+        <button class="db-btn db-btn-primary" onclick="downloadDatabaseJson()">📥 Download Database</button>
+      </div>
+    </header>
+
+    <!-- Metrics Grid -->
+    <section class="db-stats-grid">
+      <div class="db-stat-card">
+        <span class="label">CURRENT STREAK</span>
+        <span class="val" id="db-stat-streak">19 Days</span>
+        <span class="sub">🔥 Active & Protected</span>
+      </div>
+      <div class="db-stat-card">
+        <span class="label">HOW MUCH I DID</span>
+        <span class="val" id="db-stat-solved">19 / 30</span>
+        <span class="sub" id="db-stat-pct">63.3% Complete</span>
+      </div>
+      <div class="db-stat-card">
+        <span class="label">REMAINING DAYS</span>
+        <span class="val" id="db-stat-remaining">11 Days</span>
+        <span class="sub" style="color:var(--text-2);">Quest Days Left</span>
+      </div>
+      <div class="db-stat-card">
+        <span class="label">ALL-TIME BEST</span>
+        <span class="val" id="db-stat-best">20 Days</span>
+        <span class="sub" style="color:var(--duo-yellow);">🏆 Personal Record</span>
+      </div>
+      <div class="db-stat-card">
+        <span class="label">UNSTOP ACCOUNT</span>
+        <span class="val" style="font-size:1.15rem; margin-top:0.3rem;" id="db-stat-user">Animesh Goswami</span>
+        <span class="sub" id="db-stat-handle">@animegos31002</span>
+      </div>
+      <div class="db-stat-card">
+        <span class="label">DATABASE STATUS</span>
+        <span class="val" style="font-size:1.15rem; color:var(--duo-green); margin-top:0.3rem;">🟢 LIVE & ONLINE</span>
+        <span class="sub" id="db-stat-sync">Real-time Connected</span>
+      </div>
+    </section>
+
+    <!-- Challenges Table Card -->
+    <section class="db-content-card">
+      <div class="db-card-header">
+        <div>
+          <h2 style="font-size:1.25rem; font-weight:800; margin-bottom:0.25rem;">📜 Collected Challenge Records</h2>
+          <p style="color:var(--text-2); font-size:0.85rem;">Every daily challenge completed on Unstop with date and link</p>
+        </div>
+        <div class="filter-tabs">
+          <button class="filter-tab active" onclick="setFilter('all', this)">All (30)</button>
+          <button class="filter-tab" onclick="setFilter('solved', this)" id="tab-solved">Solved (19)</button>
+          <button class="filter-tab" onclick="setFilter('upcoming', this)" id="tab-upcoming">Upcoming (11)</button>
+        </div>
+      </div>
+
+      <div class="db-table-wrap">
+        <table class="db-table">
+          <thead>
+            <tr>
+              <th style="width:70px;">Day</th>
+              <th>Challenge Title</th>
+              <th style="width:120px;">Status</th>
+              <th style="width:130px;">Date (DD/MM/YY)</th>
+              <th style="width:200px;">Solved At (IST)</th>
+              <th style="width:120px;">Problem Link</th>
+            </tr>
+          </thead>
+          <tbody id="db-table-body">
+            <tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-2);">Loading database records...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Raw JSON Viewer Card -->
+    <section class="db-content-card">
+      <div class="db-card-header">
+        <div>
+          <h2 style="font-size:1.25rem; font-weight:800; margin-bottom:0.25rem;">🔍 Raw Database Payload (JSON)</h2>
+          <p style="color:var(--text-2); font-size:0.85rem;">Direct live JSON payload returned by <code style="color:var(--duo-blue);">/api/database</code></p>
+        </div>
+        <button class="db-btn db-btn-secondary" onclick="copyDatabaseJson()">📋 Copy JSON</button>
+      </div>
+      <div class="json-box" id="db-json-view">Loading raw payload...</div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    let rawDatabaseData = null;
+    let activeFilter = 'all';
+
+    function formatDDMMYY(dateInput) {
+      if (!dateInput) return '—';
+      try {
+        if (typeof dateInput === 'string' && dateInput.includes('-') && dateInput.length === 10) {
+          const parts = dateInput.split('-');
+          return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0].slice(-2)}`;
+        }
+        const dt = new Date(dateInput);
+        if (isNaN(dt.getTime())) return String(dateInput);
+        const day = String(dt.getDate()).padStart(2, '0');
+        const month = String(dt.getMonth() + 1).padStart(2, '0');
+        const year = String(dt.getFullYear()).slice(-2);
+        return `${day}/${month}/${year}`;
+      } catch {
+        return String(dateInput);
+      }
+    }
+
+    function formatTimestampIST(isoStr) {
+      if (!isoStr) return '—';
+      try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return isoStr;
+        return d.toLocaleString('en-IN', {
+          dateStyle: 'short',
+          timeStyle: 'medium',
+          timeZone: 'Asia/Kolkata'
+        });
+      } catch {
+        return isoStr;
+      }
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    async function loadDatabase() {
+      try {
+        const res = await fetch('/api/database');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        rawDatabaseData = await res.json();
+        renderDatabaseView();
+      } catch (err) {
+        console.warn('API error, falling back to /api/challenges:', err);
+        try {
+          const res2 = await fetch('/api/challenges');
+          rawDatabaseData = await res2.json();
+          renderDatabaseView();
+        } catch (err2) {
+          document.getElementById('db-table-body').innerHTML = `<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--danger);">Error loading database: ${err2.message}</td></tr>`;
+        }
+      }
+    }
+
+    function renderDatabaseView() {
+      if (!rawDatabaseData) return;
+      const stats = rawDatabaseData.stats || {};
+      const user = rawDatabaseData.user || {};
+      const challenges = rawDatabaseData.challenges || [];
+
+      // Update stat cards
+      const solved = challenges.filter(c => c.status === 'solved').length;
+      const streak = stats.streak || solved || 19;
+      const total = challenges.length || 30;
+
+      document.getElementById('db-stat-streak').textContent = `${streak} Days`;
+      document.getElementById('db-stat-solved').textContent = `${solved} / ${total}`;
+      document.getElementById('db-stat-pct').textContent = `${((solved / total) * 100).toFixed(1)}% Journey Done`;
+      document.getElementById('db-stat-remaining').textContent = `${Math.max(0, total - streak)} Days`;
+      document.getElementById('db-stat-best').textContent = `${stats.best_streak || 20} Days`;
+      document.getElementById('db-stat-user').textContent = user.name || 'Animesh Goswami';
+      document.getElementById('db-stat-handle').textContent = user.username ? `@${user.username}` : '@animegos31002';
+      document.getElementById('db-stat-sync').textContent = `Synced: ${new Date().toLocaleTimeString()}`;
+
+      document.getElementById('tab-solved').textContent = `Solved (${solved})`;
+      document.getElementById('tab-upcoming').textContent = `Upcoming (${total - solved})`;
+
+      // Render table
+      renderTableRows(challenges);
+
+      // Render JSON
+      document.getElementById('db-json-view').textContent = JSON.stringify(rawDatabaseData, null, 2);
+    }
+
+    function setFilter(filter, btn) {
+      activeFilter = filter;
+      document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      if (rawDatabaseData) {
+        renderTableRows(rawDatabaseData.challenges || []);
+      }
+    }
+
+    function renderTableRows(challenges) {
+      let filtered = challenges;
+      if (activeFilter === 'solved') {
+        filtered = challenges.filter(c => c.status === 'solved');
+      } else if (activeFilter === 'upcoming') {
+        filtered = challenges.filter(c => c.status !== 'solved');
+      }
+
+      if (filtered.length === 0) {
+        document.getElementById('db-table-body').innerHTML = `<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-2);">No records match this filter.</td></tr>`;
+        return;
+      }
+
+      const rowsHtml = filtered.map(c => {
+        const isSolved = c.status === 'solved';
+        const chip = isSolved
+          ? `<span class="chip chip-solved">✅ Solved</span>`
+          : `<span class="chip chip-upcoming">🔒 Upcoming</span>`;
+        const dateFormatted = formatDDMMYY(c.solved_at || c.assigned_date);
+        const solvedAtFormatted = c.solved_at ? formatTimestampIST(c.solved_at) : '—';
+        const problemLink = c.link ? `<a href="${c.link}" target="_blank" rel="noopener noreferrer" style="color:var(--duo-blue); text-decoration:none; font-weight:600;">Open Quest ↗</a>` : '—';
+
+        return `
+          <tr>
+            <td><strong>Day ${c.day}</strong></td>
+            <td><strong>${c.title || `Day ${c.day} Quest`}</strong></td>
+            <td>${chip}</td>
+            <td><strong>${dateFormatted}</strong></td>
+            <td style="font-family:var(--font-mono); font-size:0.8rem; color:${isSolved ? 'var(--text)' : 'var(--text-3)'};">${solvedAtFormatted}</td>
+            <td>${problemLink}</td>
+          </tr>
+        `;
+      }).join('');
+
+      document.getElementById('db-table-body').innerHTML = rowsHtml;
+    }
+
+    function copyDatabaseJson() {
+      if (!rawDatabaseData) return;
+      const text = JSON.stringify(rawDatabaseData, null, 2);
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('📋 Database JSON copied to clipboard!');
+      }).catch(() => {
+        showToast('❌ Copy failed. Check permissions.');
+      });
+    }
+
+    function downloadDatabaseJson() {
+      if (!rawDatabaseData) return;
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(rawDatabaseData, null, 2));
+      const a = document.createElement('a');
+      a.setAttribute("href", dataStr);
+      a.setAttribute("download", `unstop_database_day${rawDatabaseData.stats?.streak || 19}.json`);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      showToast('📥 Downloading unstop_database.json...');
+    }
+
+    // Auto-load on open and auto-refresh every 15s
+    loadDatabase();
+    setInterval(loadDatabase, 15000);
+  </script>
+</body>
+</html>

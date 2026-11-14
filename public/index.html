@@ -51,6 +51,11 @@
           <span id="unstop-auth-label">Connect Unstop</span>
         </button>
 
+        <!-- Direct Database Explorer Link -->
+        <a href="/database.html" class="btn btn-secondary" style="text-decoration:none; display:inline-flex; align-items:center; gap:0.4rem;" title="View collected challenge database & records">
+          💾 Database
+        </a>
+
         <div id="notif-status" class="notif-badge notif-off">
           <span class="notif-dot"></span>
           <span id="notif-label">Notifications Off</span>
@@ -215,20 +220,20 @@
             <div class="account-progress-grid">
               <div class="acc-stat-box">
                 <span class="acc-stat-label">HOW MUCH I DID</span>
-                <div class="acc-stat-number"><span id="acc-solved-num">13</span> <span class="acc-stat-sub">/ 30 Days</span></div>
-                <div class="acc-mini-bar"><div class="acc-mini-fill" id="acc-progress-fill" style="width:43.3%"></div></div>
-                <span class="acc-stat-note" id="acc-progress-note">43.3% Journey Completed (17 Left)</span>
+                <div class="acc-stat-number"><span id="acc-solved-num">19</span> <span class="acc-stat-sub">/ 30 Days</span></div>
+                <div class="acc-mini-bar"><div class="acc-mini-fill" id="acc-progress-fill" style="width:63.3%"></div></div>
+                <span class="acc-stat-note" id="acc-progress-note">63.3% Journey Completed (11 Left)</span>
               </div>
 
               <div class="acc-stat-box">
                 <span class="acc-stat-label">CURRENT STATUS</span>
-                <div class="acc-stat-status" id="acc-current-status"><span class="status-chip chip-solved">✅ Day 13 Solved</span></div>
+                <div class="acc-stat-status" id="acc-current-status"><span class="status-chip chip-solved">✅ Day 19 Solved</span></div>
                 <span class="acc-stat-note" id="acc-status-note">Streak Protected for Today 🔥</span>
               </div>
 
               <div class="acc-stat-box">
                 <span class="acc-stat-label">STREAK & MAX RECORD</span>
-                <div class="acc-stat-number"><span id="acc-streak-num">13</span> <span class="acc-stat-sub">Days Active</span></div>
+                <div class="acc-stat-number"><span id="acc-streak-num">19</span> <span class="acc-stat-sub">Days Active</span></div>
                 <span class="acc-stat-note" id="acc-best-note">🏆 Max Streak: 20 Days</span>
               </div>
 
@@ -356,6 +361,11 @@
           <span class="ctrl-label">Next Reminder</span>
           <span class="ctrl-desc" id="next-reminder-time">Tonight at 12:00 AM</span>
         </div>
+        <a class="control-btn" href="/database.html" style="text-decoration:none">
+          <span class="ctrl-icon">💾</span>
+          <span class="ctrl-label">View Database</span>
+          <span class="ctrl-desc">Explore all 30 records & JSON ↗</span>
+        </a>
         <button class="control-btn" onclick="testDesktopAlert()">
           <span class="ctrl-icon">🔔</span>
           <span class="ctrl-label">Test Desktop Alert</span>

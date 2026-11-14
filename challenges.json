@@ -159,11 +159,11 @@
     {
       "id": 14,
       "day": 14,
-      "title": "Day 14: Sliding Window Maximum & Min Window Substring",
-      "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
+      "title": "Day 14: Platform Pressure at Dunmore Junction",
+      "link": "https://unstop.com/code/practice/670819",
+      "status": "solved",
       "reminded_at": null,
-      "solved_at": null,
+      "solved_at": "2026-11-09T22:12:01.393171+05:30",
       "created_at": "2026-10-27T00:00:00.000Z",
       "assigned_date": "2026-11-09",
       "missed_at": null
@@ -171,11 +171,11 @@
     {
       "id": 15,
       "day": 15,
-      "title": "Day 15: Two Pointers: 3Sum & Container With Most Water",
-      "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
+      "title": "Day 15: Calm Stretches at Orsel Ridge",
+      "link": "https://unstop.com/code/practice/670820",
+      "status": "solved",
+      "reminded_at": "2026-11-10T00:00:17.052322+05:30",
+      "solved_at": "2026-11-10T00:00:48.582221+05:30",
       "created_at": "2026-10-27T00:00:00.000Z",
       "assigned_date": "2026-11-10",
       "missed_at": null
@@ -183,11 +183,11 @@
     {
       "id": 16,
       "day": 16,
-      "title": "Day 16: Monotonic Stack: Next Greater Element & Histogram",
-      "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
+      "title": "Day 16: Twilight Census of the Camera Traps",
+      "link": "https://unstop.com/code/practice/671309",
+      "status": "solved",
+      "reminded_at": "2026-11-11T00:00:14.396875+05:30",
+      "solved_at": "2026-11-11T00:33:46.873087+05:30",
       "created_at": "2026-10-27T00:00:00.000Z",
       "assigned_date": "2026-11-11",
       "missed_at": null
@@ -195,11 +195,11 @@
     {
       "id": 17,
       "day": 17,
-      "title": "Day 17: Priority Queue & Top K Frequent Elements",
-      "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
+      "title": "Day 17: Tasting Passes on the Lantern Promenade",
+      "link": "https://unstop.com/code/practice/671342",
+      "status": "solved",
+      "reminded_at": "2026-11-12T00:39:19.420200+05:30",
+      "solved_at": "2026-11-12T00:41:21.613368+05:30",
       "created_at": "2026-10-27T00:00:00.000Z",
       "assigned_date": "2026-11-12",
       "missed_at": null
@@ -207,11 +207,11 @@
     {
       "id": 18,
       "day": 18,
-      "title": "Day 18: Interval Scheduling & Merge Intervals",
-      "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
+      "title": "Day 18: Cold Room Rotation Ledger",
+      "link": "https://unstop.com/code/practice/671424",
+      "status": "solved",
+      "reminded_at": "2026-11-13T00:00:32.769485+05:30",
+      "solved_at": "2026-11-13T00:07:19.785463+05:30",
       "created_at": "2026-10-27T00:00:00.000Z",
       "assigned_date": "2026-11-13",
       "missed_at": null
@@ -219,11 +219,11 @@
     {
       "id": 19,
       "day": 19,
-      "title": "Day 19: Tree Diameter & Lowest Common Ancestor",
-      "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
+      "title": "Day 19: Lantern Lane Reservations",
+      "link": "https://unstop.com/code/practice/671425",
+      "status": "solved",
+      "reminded_at": "2026-11-14T00:12:51.100699+05:30",
+      "solved_at": "2026-11-14T00:22:28.934869+05:30",
       "created_at": "2026-10-27T00:00:00.000Z",
       "assigned_date": "2026-11-14",
       "missed_at": null
@@ -237,7 +237,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-15",
+      "assigned_date": "2026-11-14",
       "missed_at": null
     },
     {
@@ -249,7 +249,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-16",
+      "assigned_date": "2026-11-15",
       "missed_at": null
     },
     {
@@ -261,7 +261,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-17",
+      "assigned_date": "2026-11-16",
       "missed_at": null
     },
     {
@@ -273,7 +273,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-18",
+      "assigned_date": "2026-11-17",
       "missed_at": null
     },
     {
@@ -285,7 +285,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-19",
+      "assigned_date": "2026-11-18",
       "missed_at": null
     },
     {
@@ -297,7 +297,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-20",
+      "assigned_date": "2026-11-19",
       "missed_at": null
     },
     {
@@ -309,7 +309,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-21",
+      "assigned_date": "2026-11-20",
       "missed_at": null
     },
     {
@@ -321,7 +321,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-22",
+      "assigned_date": "2026-11-21",
       "missed_at": null
     },
     {
@@ -333,7 +333,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-23",
+      "assigned_date": "2026-11-22",
       "missed_at": null
     },
     {
@@ -345,7 +345,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-24",
+      "assigned_date": "2026-11-23",
       "missed_at": null
     },
     {
@@ -357,7 +357,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-25",
+      "assigned_date": "2026-11-24",
       "missed_at": null
     }
   ],
@@ -451,6 +451,7 @@
     "unstop_auth_user": "animegos31002",
     "unstop_auth_email": "animesh.goswami045@gmail.com",
     "unstop_auth_at": "2026-10-29T12:56:05.698212+05:30",
-    "archived_runs": []
+    "archived_runs": [],
+    "streak": 19
   }
 }
