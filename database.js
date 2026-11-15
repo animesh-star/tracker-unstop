@@ -33,14 +33,16 @@ try {
       fs.copyFileSync(sourcePath, DB_PATH);
       console.log('📦 Initialized challenges.json for server environment');
     } else {
-      // If bundled data has more solved challenges than /tmp cache, update /tmp
+      // If bundled data has a newer version or more solved challenges, update cache
       const cached = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
       const bundled = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
+      const cachedVersion = Number(cached.settings && cached.settings.data_version) || 0;
+      const bundledVersion = Number(bundled.settings && bundled.settings.data_version) || 0;
       const cachedSolved = (cached.challenges || []).filter(c => c.status === 'solved').length;
       const bundledSolved = (bundled.challenges || []).filter(c => c.status === 'solved').length;
-      if (bundledSolved > cachedSolved) {
+      if (bundledVersion > cachedVersion || bundledSolved > cachedSolved) {
         fs.copyFileSync(sourcePath, DB_PATH);
-        console.log('📦 Updated challenges.json with latest bundled solved state');
+        console.log('📦 Updated challenges.json with latest bundled state (v' + bundledVersion + ')');
       }
     }
   }
