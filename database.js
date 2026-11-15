@@ -45,9 +45,7 @@ try {
       const cached = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
       const cachedVersion = Number(cached.settings && cached.settings.data_version) || 0;
       const bundledVersion = Number(bundledData.settings && bundledData.settings.data_version) || 0;
-      const cachedSolved = (cached.challenges || []).filter(c => c.status === 'solved').length;
-      const bundledSolved = (bundledData.challenges || []).filter(c => c.status === 'solved').length;
-      if (bundledVersion > cachedVersion || bundledSolved > cachedSolved) {
+      if (bundledVersion > cachedVersion) {
         writeDB(bundledData);
         console.log('📦 Updated challenges.json with latest bundled state (v' + bundledVersion + ')');
       }
@@ -55,6 +53,13 @@ try {
   }
 } catch (err) {
   console.warn('⚠️ Initialization notice:', err.message);
+}
+
+// Ensure database is always synchronized with regular calendar dates
+try {
+  syncCalendarDates();
+} catch (err) {
+  console.warn('⚠️ syncCalendarDates on startup notice:', err.message);
 }
 
 // ─── Default DB Structure ──────────────────────────────────────────────────────
@@ -467,8 +472,14 @@ function updateChallengeStatus(day, status) {
   if (!sanitizedDay) return null;
 
   const db = readDB();
+  const today = todayDateStr();
   const c = db.challenges.find(ch => ch.day === sanitizedDay);
   if (c) {
+    // Regular date guard: cannot mark future challenges as solved
+    if (sanitizedStatus === 'solved' && c.assigned_date && c.assigned_date > today) {
+      console.warn(`🛡️ Blocked attempt to solve future Day ${c.day} (${c.assigned_date}) ahead of regular date`);
+      return null;
+    }
     c.status = sanitizedStatus;
     c.solved_at = sanitizedStatus === 'solved' ? nowISO() : null;
     if (sanitizedStatus === 'solved') {
@@ -715,6 +726,7 @@ function setChallengeDay(day, data) {
 function syncDatabase(incoming) {
   if (!incoming || !incoming.challenges || !Array.isArray(incoming.challenges)) return null;
   const db = readDB();
+  const today = todayDateStr();
   const cmap = {};
   (db.challenges || []).forEach(c => { cmap[c.day] = c; });
 
@@ -725,12 +737,19 @@ function syncDatabase(incoming) {
       db.challenges.push(c);
       cmap[c.day] = c;
     } else {
-      existing.status = c.status;
-      existing.solved_at = c.solved_at || null;
+      existing.assigned_date = c.assigned_date || existing.assigned_date || null;
       if (c.link) existing.link = sanitizeUrl(c.link) || existing.link;
       if (c.title) existing.title = sanitizeText(c.title, 150) || existing.title;
-      existing.assigned_date = c.assigned_date || null;
       existing.missed_at = c.missed_at !== undefined ? c.missed_at : null;
+
+      // Regular date safety guard: Future challenges CANNOT be solved ahead of regular date
+      if (existing.assigned_date && existing.assigned_date > today) {
+        existing.status = 'upcoming';
+        existing.solved_at = null;
+      } else {
+        existing.status = c.status;
+        existing.solved_at = c.status === 'solved' ? (c.solved_at || existing.solved_at || nowISO()) : null;
+      }
     }
   }
 
@@ -740,6 +759,75 @@ function syncDatabase(incoming) {
 
   writeDB(db);
   evaluateAndUpdateMissedDays();
+  return db;
+}
+
+/**
+ * Synchronizes all 30 days to their exact regular calendar dates.
+ * Day 1 started on 2026-10-27.
+ * Day 20: 2026-11-15 (Today, Solved)
+ * Day 21: 2026-11-16 (Tomorrow: 16/11/26, Upcoming, NOT DONE, didn't come)
+ * Days 22-30: Sequential upcoming days.
+ * Ensures future days (assigned_date > today) are strictly 'upcoming' with solved_at = null.
+ */
+function syncCalendarDates() {
+  const db = readDB();
+  const today = todayDateStr(); // '2026-11-15'
+  const startDate = new Date('2026-10-27T00:00:00+05:30');
+
+  if (!db.challenges || !Array.isArray(db.challenges)) {
+    db.challenges = [];
+  }
+
+  for (let d = 1; d <= 30; d++) {
+    const dDate = new Date(startDate.getTime() + (d - 1) * 86400000);
+    const yyyy = dDate.getFullYear();
+    const mm = String(dDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(dDate.getDate()).padStart(2, '0');
+    const regularDateStr = `${yyyy}-${mm}-${dd}`;
+
+    let c = db.challenges.find(item => item.day === d);
+    if (!c) {
+      c = {
+        id: d,
+        day: d,
+        title: `Day ${d}: ${CURATED_TOPICS[d - 1] || 'Challenge'}`,
+        link: 'https://unstop.com/practice/coding',
+        status: 'upcoming',
+        reminded_at: null,
+        solved_at: null,
+        created_at: '2026-10-27T00:00:00.000Z',
+        assigned_date: regularDateStr,
+        missed_at: null
+      };
+      db.challenges.push(c);
+    } else {
+      c.assigned_date = regularDateStr;
+      // Future challenge protection: cannot be solved if the date has not arrived yet!
+      if (regularDateStr > today) {
+        c.status = 'upcoming';
+        c.solved_at = null;
+        c.reminded_at = null;
+        c.missed_at = null;
+      } else if (regularDateStr === today) {
+        if (c.status !== 'solved') {
+          c.status = 'pending';
+        }
+      }
+    }
+  }
+
+  // Strictly sort by day
+  db.challenges.sort((a, b) => a.day - b.day);
+
+  // Recalculate streak
+  const streak = getStreakUnlocked(db);
+  db.settings = db.settings || {};
+  db.settings.streak = streak;
+  db.settings.best_streak = Math.max(Number(db.settings.best_streak) || 20, 20, streak);
+  db.settings.data_version = (Number(db.settings.data_version) || 2026111501) + 1;
+
+  writeDB(db);
   return db;
 }
 
@@ -828,6 +916,7 @@ module.exports = {
   getCurrentRunChallenges,
   setChallengeDay,
   syncDatabase,
+  syncCalendarDates,
   getStats,
   getStreak,
   saveSubscription,

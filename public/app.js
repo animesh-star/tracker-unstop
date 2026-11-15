@@ -306,7 +306,24 @@ async function testDesktopAlert() {
 // ─── Local Storage Persistence Helpers ─────────────────────────────────────────
 function getLocalSolvedMap() {
   try {
-    return JSON.parse(localStorage.getItem('unstop_solved_map') || '{}');
+    const raw = localStorage.getItem('unstop_solved_map');
+    const map = raw ? JSON.parse(raw) : {};
+    const today = todayDateISO(); // '2026-11-15'
+    let cleaned = false;
+    for (const dayStr of Object.keys(map)) {
+      const dayNum = Number(dayStr);
+      const entry = map[dayStr];
+      const entryDate = entry?.assigned_date || (entry?.solved_at ? entry.solved_at.split('T')[0] : null);
+      // Future days (like Day 21 on 16/11) cannot be marked solved
+      if (dayNum > 20 || (entryDate && entryDate > today)) {
+        delete map[dayStr];
+        cleaned = true;
+      }
+    }
+    if (cleaned) {
+      localStorage.setItem('unstop_solved_map', JSON.stringify(map));
+    }
+    return map;
   } catch {
     return {};
   }
@@ -314,16 +331,39 @@ function getLocalSolvedMap() {
 
 function saveLocalSolvedDay(day, solvedInfo = {}) {
   try {
+    const today = todayDateISO();
+    if (day > 20 || (solvedInfo.assigned_date && solvedInfo.assigned_date > today)) {
+      console.warn(`Blocked saving future Day ${day} to local solved map`);
+      return;
+    }
     const map = getLocalSolvedMap();
     map[day] = {
       status: 'solved',
       solved_at: solvedInfo.solved_at || new Date().toISOString(),
       title: solvedInfo.title,
       link: solvedInfo.link,
-      assigned_date: solvedInfo.assigned_date || todayDateISO()
+      assigned_date: solvedInfo.assigned_date || today
     };
     localStorage.setItem('unstop_solved_map', JSON.stringify(map));
   } catch {}
+}
+
+// ─── Sync with Regular Date Function ───────────────────────────────────────────
+async function syncWithRegularCalendarDate() {
+  try {
+    const res = await fetch(`${API_BASE}/api/sync-calendar`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      // Clear any stale local cache for Day 21+
+      const map = getLocalSolvedMap();
+      delete map[21];
+      localStorage.setItem('unstop_solved_map', JSON.stringify(map));
+      await loadData();
+      showToast('📅 All challenges synchronized with regular calendar dates! Day 21 is set to 16/11/26 (Upcoming).');
+    }
+  } catch (e) {
+    console.error('Calendar sync error:', e);
+  }
 }
 
 // ─── Load Data ─────────────────────────────────────────────────────────────────
@@ -342,8 +382,20 @@ async function loadData(silent = false) {
     // ─── Persistent Solved Merge (Prevents Any Reversion) ───────────────────
     const localSolvedMap = getLocalSolvedMap();
     let localChanged = false;
+    const todayStr = todayDateISO();
 
     challenges.forEach(c => {
+      // Regular date guard: future challenges (Day 21+) MUST stay upcoming
+      if (c.assigned_date && c.assigned_date > todayStr) {
+        c.status = 'upcoming';
+        c.solved_at = null;
+        if (localSolvedMap[c.day]) {
+          delete localSolvedMap[c.day];
+          localChanged = true;
+        }
+        return;
+      }
+
       if (localSolvedMap[c.day]) {
         if (c.status !== 'solved') {
           c.status = 'solved';

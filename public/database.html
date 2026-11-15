@@ -289,10 +289,13 @@
           <h2 style="font-size:1.25rem; font-weight:800; margin-bottom:0.25rem;">📜 Collected Challenge Records</h2>
           <p style="color:var(--text-2); font-size:0.85rem;">Every daily challenge completed on Unstop with date and link</p>
         </div>
-        <div class="filter-tabs">
-          <button class="filter-tab active" onclick="setFilter('all', this)">All (30)</button>
-          <button class="filter-tab" onclick="setFilter('solved', this)" id="tab-solved">Solved (20)</button>
-          <button class="filter-tab" onclick="setFilter('upcoming', this)" id="tab-upcoming">Upcoming (10)</button>
+        <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+          <button class="db-btn" onclick="syncWithRegularDate()" id="btn-sync-regular" style="background:var(--duo-blue); color:#fff; border:none; padding:0.45rem 0.85rem; font-size:0.82rem; font-weight:700; border-radius:var(--radius-sm); cursor:pointer; display:inline-flex; align-items:center; gap:0.35rem; transition:transform 0.15s ease;"><span id="sync-icon">📅</span> Sync Regular Dates</button>
+          <div class="filter-tabs">
+            <button class="filter-tab active" onclick="setFilter('all', this)">All (30)</button>
+            <button class="filter-tab" onclick="setFilter('solved', this)" id="tab-solved">Solved (20)</button>
+            <button class="filter-tab" onclick="setFilter('upcoming', this)" id="tab-upcoming">Upcoming (10)</button>
+          </div>
         </div>
       </div>
 
@@ -376,6 +379,16 @@
 
     async function loadDatabase() {
       try {
+        // Clear any stale local map in browser for future days
+        try {
+          const map = JSON.parse(localStorage.getItem('unstop_solved_map') || '{}');
+          if (map[21] || map['21']) {
+            delete map[21];
+            delete map['21'];
+            localStorage.setItem('unstop_solved_map', JSON.stringify(map));
+          }
+        } catch {}
+
         const res = await fetch('/api/database');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         rawDatabaseData = await res.json();
@@ -449,9 +462,9 @@
         const chip = isSolved
           ? `<span class="chip chip-solved">✅ Solved</span>`
           : `<span class="chip chip-upcoming">🔒 Upcoming</span>`;
-        const dateFormatted = formatDDMMYY(c.solved_at || c.assigned_date);
-        const solvedAtFormatted = c.solved_at ? formatTimestampIST(c.solved_at) : '—';
-        const problemLink = c.link ? `<a href="${c.link}" target="_blank" rel="noopener noreferrer" style="color:var(--duo-blue); text-decoration:none; font-weight:600;">Open Quest ↗</a>` : '—';
+        const dateFormatted = formatDDMMYY(c.assigned_date || c.solved_at);
+        const solvedAtFormatted = isSolved && c.solved_at ? formatTimestampIST(c.solved_at) : '—';
+        const problemLink = c.link ? `<a href="${c.link}" target="_blank" rel="noopener noreferrer" style="color:var(--duo-blue); text-decoration:none; font-weight:600;">Open Problem ↗</a>` : '—';
 
         return `
           <tr>
@@ -466,6 +479,48 @@
       }).join('');
 
       document.getElementById('db-table-body').innerHTML = rowsHtml;
+    }
+
+    async function syncWithRegularDate() {
+      const btn = document.getElementById('btn-sync-regular');
+      const icon = document.getElementById('sync-icon');
+      if (btn) btn.disabled = true;
+      if (icon) icon.textContent = '⏳';
+      try {
+        // Clear any stale local map in browser
+        try {
+          const map = JSON.parse(localStorage.getItem('unstop_solved_map') || '{}');
+          delete map[21];
+          delete map['21'];
+          localStorage.setItem('unstop_solved_map', JSON.stringify(map));
+        } catch {}
+
+        const res = await fetch('/api/sync-calendar', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          rawDatabaseData = {
+            database: 'unstop_challenge_tracker',
+            status: 'online',
+            exported_at: data.synced_at || new Date().toISOString(),
+            stats: data.stats,
+            user: rawDatabaseData?.user || {},
+            total_challenges: data.challenges?.length || 30,
+            solved_count: data.stats?.solved || 20,
+            upcoming_count: data.stats?.remaining || 10,
+            challenges: data.challenges,
+            currentRun: data.challenges?.slice(0, data.stats?.streak || 20) || []
+          };
+          renderDatabaseView();
+          showToast('📅 Synchronized all 30 days with regular calendar dates! Day 21 is set to 16/11/26 (Upcoming).');
+        } else {
+          showToast('❌ Failed to sync: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        showToast('❌ Sync error: ' + err.message);
+      } finally {
+        if (btn) btn.disabled = false;
+        if (icon) icon.textContent = '📅';
+      }
     }
 
     function copyDatabaseJson() {

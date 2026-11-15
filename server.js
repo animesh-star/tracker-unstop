@@ -561,6 +561,26 @@ app.post('/api/cloud-sync', apiLimiter, requireAuth, (req, res) => {
   }
 });
 
+// ─── Sync with Regular Calendar Dates Endpoint ──────────────────────────────────
+app.all(['/api/sync-calendar', '/api/sync-dates'], apiLimiter, (req, res) => {
+  try {
+    const updatedDb = db.syncCalendarDates();
+    const today = db.getOrCreateTodayChallenge();
+    const stats = db.getStats();
+    res.json({
+      success: true,
+      message: 'Successfully synchronized all challenges with regular calendar dates. Day 21 is set to 16/11/26 (Upcoming).',
+      stats,
+      today,
+      synced_at: new Date().toISOString(),
+      challenges: db.getAllChallenges()
+    });
+  } catch (err) {
+    console.error('❌ Calendar sync error:', err);
+    res.status(500).json({ error: err.message || 'Failed to sync calendar dates' });
+  }
+});
+
 app.post('/api/challenge/update', sensitiveActionLimiter, requireAuth, (req, res) => {
   const { day, link, title } = req.body;
   const validDay = db.sanitizeDay(day);
