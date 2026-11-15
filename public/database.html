@@ -413,7 +413,7 @@
 
       // Update stat cards
       const solved = challenges.filter(c => c.status === 'solved').length;
-      const streak = stats.streak || solved || 19;
+      const streak = stats.streak || solved || 20;
       const total = challenges.length || 30;
 
       document.getElementById('db-stat-streak').textContent = `${streak} Days`;
@@ -538,7 +538,7 @@
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(rawDatabaseData, null, 2));
       const a = document.createElement('a');
       a.setAttribute("href", dataStr);
-      a.setAttribute("download", `unstop_database_day${rawDatabaseData.stats?.streak || 19}.json`);
+      a.setAttribute("download", `unstop_database_day${rawDatabaseData.stats?.streak || 20}.json`);
       document.body.appendChild(a);
       a.click();
       a.remove();

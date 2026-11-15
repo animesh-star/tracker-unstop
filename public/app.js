@@ -451,7 +451,6 @@ async function loadData(silent = false) {
     }
 
     // If today is marked solved, ensure activeChallenge points to the solved quest
-    const todayStr = todayDateISO();
     const todayAssigned = challenges.find(c => c.assigned_date === todayStr || c.day === computedStreak);
     if (todayAssigned && todayAssigned.status === 'solved') {
       activeChallenge = todayAssigned;
