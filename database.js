@@ -781,10 +781,7 @@ function syncCalendarDates() {
 
   for (let d = 1; d <= 30; d++) {
     const dDate = new Date(startDate.getTime() + (d - 1) * 86400000);
-    const yyyy = dDate.getFullYear();
-    const mm = String(dDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(dDate.getDate()).padStart(2, '0');
-    const regularDateStr = `${yyyy}-${mm}-${dd}`;
+    const regularDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dDate);
 
     let c = db.challenges.find(item => item.day === d);
     if (!c) {
