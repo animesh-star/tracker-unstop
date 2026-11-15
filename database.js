@@ -19,6 +19,15 @@ const TMP_PATH = path.join(DATA_DIR, 'challenges.tmp');
 const LEGACY_PATH = path.join(__dirname, 'challenges.json');
 const BUNDLED_PATH = path.join(__dirname, 'data', 'challenges.json');
 
+let bundledData = null;
+try {
+  bundledData = require('./data/challenges.json');
+} catch (e) {
+  try {
+    bundledData = require('./challenges.json');
+  } catch (e2) {}
+}
+
 // Ensure directories exist
 try {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -27,21 +36,19 @@ try {
 
 // Auto-migrate from bundled/legacy root if needed
 try {
-  const sourcePath = fs.existsSync(BUNDLED_PATH) ? BUNDLED_PATH : (fs.existsSync(LEGACY_PATH) ? LEGACY_PATH : null);
-  if (sourcePath) {
+  if (bundledData) {
     if (!fs.existsSync(DB_PATH)) {
-      fs.copyFileSync(sourcePath, DB_PATH);
+      writeDB(bundledData);
       console.log('📦 Initialized challenges.json for server environment');
     } else {
       // If bundled data has a newer version or more solved challenges, update cache
       const cached = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-      const bundled = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
       const cachedVersion = Number(cached.settings && cached.settings.data_version) || 0;
-      const bundledVersion = Number(bundled.settings && bundled.settings.data_version) || 0;
+      const bundledVersion = Number(bundledData.settings && bundledData.settings.data_version) || 0;
       const cachedSolved = (cached.challenges || []).filter(c => c.status === 'solved').length;
-      const bundledSolved = (bundled.challenges || []).filter(c => c.status === 'solved').length;
+      const bundledSolved = (bundledData.challenges || []).filter(c => c.status === 'solved').length;
       if (bundledVersion > cachedVersion || bundledSolved > cachedSolved) {
-        fs.copyFileSync(sourcePath, DB_PATH);
+        writeDB(bundledData);
         console.log('📦 Updated challenges.json with latest bundled state (v' + bundledVersion + ')');
       }
     }
