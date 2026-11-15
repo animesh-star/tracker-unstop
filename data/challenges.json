@@ -231,13 +231,13 @@
     {
       "id": 20,
       "day": 20,
-      "title": "Day 20: Bit Manipulation: Single Number & Counting Bits",
-      "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
+      "title": "Day 20: Gantry Drift Audit",
+      "link": "https://unstop.com/code/practice/671426",
+      "status": "solved",
       "reminded_at": null,
-      "solved_at": null,
+      "solved_at": "2026-11-15T19:10:26.253543+05:30",
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-14",
+      "assigned_date": "2026-11-15",
       "missed_at": null
     },
     {
@@ -249,7 +249,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-15",
+      "assigned_date": "2026-11-16",
       "missed_at": null
     },
     {
@@ -261,7 +261,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-16",
+      "assigned_date": "2026-11-17",
       "missed_at": null
     },
     {
@@ -273,7 +273,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-17",
+      "assigned_date": "2026-11-18",
       "missed_at": null
     },
     {
@@ -285,7 +285,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-18",
+      "assigned_date": "2026-11-19",
       "missed_at": null
     },
     {
@@ -297,7 +297,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-19",
+      "assigned_date": "2026-11-20",
       "missed_at": null
     },
     {
@@ -309,7 +309,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-20",
+      "assigned_date": "2026-11-21",
       "missed_at": null
     },
     {
@@ -321,7 +321,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-21",
+      "assigned_date": "2026-11-22",
       "missed_at": null
     },
     {
@@ -333,7 +333,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-22",
+      "assigned_date": "2026-11-23",
       "missed_at": null
     },
     {
@@ -345,7 +345,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-23",
+      "assigned_date": "2026-11-24",
       "missed_at": null
     },
     {
@@ -357,7 +357,7 @@
       "reminded_at": null,
       "solved_at": null,
       "created_at": "2026-10-27T00:00:00.000Z",
-      "assigned_date": "2026-11-24",
+      "assigned_date": "2026-11-25",
       "missed_at": null
     }
   ],
@@ -452,6 +452,6 @@
     "unstop_auth_email": "animesh.goswami045@gmail.com",
     "unstop_auth_at": "2026-10-29T12:56:05.698212+05:30",
     "archived_runs": [],
-    "streak": 19
+    "streak": 20
   }
 }
