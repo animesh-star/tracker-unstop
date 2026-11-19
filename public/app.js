@@ -256,7 +256,7 @@ async function disableNotifications() {
         body: JSON.stringify({ endpoint: pushSubscription.endpoint }),
       });
       await pushSubscription.unsubscribe();
-    } catch {}
+    } catch { }
     pushSubscription = null;
   }
   updateNotifUI(false);
@@ -291,7 +291,7 @@ async function testDesktopAlert() {
     });
 
     // Also trigger cloud server test notification (Web Push + mobile alert)
-    fetch(`${API_BASE}/api/test-notify`, { method: 'POST' }).catch(() => {});
+    fetch(`${API_BASE}/api/test-notify`, { method: 'POST' }).catch(() => { });
 
     if (shown) {
       showToast('✅ Desktop notification popped up on your screen!', 'success');
@@ -345,7 +345,7 @@ function saveLocalSolvedDay(day, solvedInfo = {}) {
       assigned_date: solvedInfo.assigned_date || today
     };
     localStorage.setItem('unstop_solved_map', JSON.stringify(map));
-  } catch {}
+  } catch { }
 }
 
 // ─── Sync with Regular Date Function ───────────────────────────────────────────
@@ -416,7 +416,7 @@ async function loadData(silent = false) {
 
     try {
       localStorage.setItem('unstop_solved_map', JSON.stringify(localSolvedMap));
-    } catch {}
+    } catch { }
 
     // Recalculate streak sequentially from Day 1
     let computedStreak = 0;
@@ -477,7 +477,7 @@ async function loadData(silent = false) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ challenges, stats })
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     const liveBadge = document.getElementById('live-sync-badge');
@@ -1056,7 +1056,7 @@ function openTaskInChrome(e) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url: safeLink })
-  }).catch(() => {});
+  }).catch(() => { });
 
   setupLivePolling(true);
   showToast(`🚀 Opening ${taskTitle} in Google Chrome!`, 'success');
@@ -1108,7 +1108,7 @@ async function markSolved() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ challenges: cachedChallenges })
-    }).catch(() => {});
+    }).catch(() => { });
 
     showToast(`🎉 Streak Maintained! Day ${targetDay} marked as solved! 🔥`, 'success');
     launchConfetti();
@@ -1328,7 +1328,7 @@ async function triggerFirstOpenTest() {
     });
 
     // 3. Trigger local laptop notifier if local server is running
-    fetch(`${API_BASE}/api/test-first-open`, { method: 'POST' }).catch(() => {});
+    fetch(`${API_BASE}/api/test-first-open`, { method: 'POST' }).catch(() => { });
 
     showToast('✅ Home screen popup card & desktop alert displayed!', 'success');
   } catch (err) {
@@ -1356,7 +1356,7 @@ async function loadAuthStatus() {
         renderAuthUI(currentAuthData);
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   // 2. Fetch server-side status to keep state verified
   try {
@@ -1367,7 +1367,7 @@ async function loadAuthStatus() {
         currentAuthData = data;
         try {
           localStorage.setItem('unstop_auth_session', JSON.stringify(data));
-        } catch (e) {}
+        } catch (e) { }
       } else {
         // If server says not authenticated but client has stored session, sync to server
         const cached = localStorage.getItem('unstop_auth_session');
@@ -1378,7 +1378,7 @@ async function loadAuthStatus() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(parsed.user || parsed)
-            }).catch(() => {});
+            }).catch(() => { });
             currentAuthData = parsed;
           } else {
             currentAuthData = data;
@@ -1512,7 +1512,7 @@ async function quickLoginUnstop() {
     };
     try {
       localStorage.setItem('unstop_auth_session', JSON.stringify(currentAuthData));
-    } catch (e) {}
+    } catch (e) { }
     renderAuthUI(currentAuthData);
     showToast('🎉 Connected with Unstop (@animegos31002)! Live tracking active.', 'success');
     closeAuthModal();
@@ -1564,7 +1564,7 @@ async function submitCustomLogin() {
     };
     try {
       localStorage.setItem('unstop_auth_session', JSON.stringify(currentAuthData));
-    } catch (e) {}
+    } catch (e) { }
     renderAuthUI(currentAuthData);
     showToast(`✅ Unstop Account @${username} connected! Live tracking active.`, 'success');
     closeAuthModal();
@@ -1579,11 +1579,11 @@ async function logoutUnstop() {
     showToast('Logging out from Unstop...', 'info');
     try {
       localStorage.removeItem('unstop_auth_session');
-    } catch (e) {}
+    } catch (e) { }
     currentAuthData = { authenticated: false };
     renderAuthUI(currentAuthData);
-    await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' }).catch(() => {});
-    showToast('🚪 Logged out from Unstop account.', 'info');
+    await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' }).catch(() => { });
+    // showToast('🚪 Logged out from Unstop account.', 'info');
     closeAuthModal();
   } catch (err) {
     showToast('❌ Server error: ' + err.message, 'error');

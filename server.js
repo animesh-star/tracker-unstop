@@ -25,11 +25,11 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
         styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
         imgSrc: ["'self'", 'data:', 'https:'],
-        connectSrc: ["'self'", 'https://ntfy.sh', 'https://fcm.googleapis.com'],
+        connectSrc: ["'self'", 'https://ntfy.sh', 'https://fcm.googleapis.com', 'https://*.supabase.co'],
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"],
         baseUri: ["'self'"],
@@ -91,7 +91,55 @@ const sensitiveActionLimiter = rateLimit({
 
 app.use('/api/', apiLimiter);
 
-// ─── 5. API Key Authentication Middleware ──────────────────────────────────────
+// ─── 5. Supabase Client & Cloud Auth Middleware ────────────────────────────────
+const { createClient } = require('@supabase/supabase-js');
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://kxmlkcqjjfefmaoaftab.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4bWxrY3FqamZlZm1hb2FmdGFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUwNjM2NTQsImV4cCI6MjExMDYzOTY1NH0.IUaP_AmpG2snCdANcIv1hXS0ceItz3Z4ih1LJZNdeHw';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/**
+ * Strict Supabase Auth Middleware for Protected Routes.
+ * Verifies JWT token from Authorization header or ?token= query param.
+ */
+async function requireSupabaseAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  let token = null;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7).trim();
+  } else if (req.query.token) {
+    token = req.query.token;
+  }
+
+  // Allow internal service key or API key
+  if (!token && (req.headers['x-api-key'] === API_SECRET || req.query.key === API_SECRET)) {
+    req.supabaseUser = { email: 'internal@service.local', role: 'service' };
+    return next();
+  }
+
+  if (!token) {
+    return res.status(401).json({
+      error: 'Unauthorized: Supabase authentication token required.',
+      login_url: '/login.html'
+    });
+  }
+
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) {
+      return res.status(401).json({
+        error: 'Invalid or expired Supabase token. Please sign in again.',
+        login_url: '/login.html'
+      });
+    }
+    req.supabaseUser = user;
+    return next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Auth validation failed: ' + err.message });
+  }
+}
+
+// ─── 5b. General Authentication Middleware ──────────────────────────────────────
 function requireAuth(req, res, next) {
   // Allow direct local and dashboard browser requests without exposing API keys in client
   const secFetchSite = req.headers['sec-fetch-site'];
@@ -126,7 +174,8 @@ function requireAuth(req, res, next) {
 
   console.warn(`🔒 Unauthorized request blocked to ${req.method} ${req.path} from ${req.ip}`);
   return res.status(401).json({
-    error: 'Unauthorized: Valid API Key is required for this operation',
+    error: 'Unauthorized: Valid API Key or Supabase session required',
+    login_url: '/login.html'
   });
 }
 
@@ -402,6 +451,39 @@ app.get('/api/roadmap', (req, res) => {
   const stats = db.getStats();
   const user = db.getUserProfile();
   res.json({ roadmap, stats, user });
+});
+
+app.get(['/login', '/auth'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+// ─── Supabase Cloud Auth & Protected Routes ──────────────────────────────────
+app.get('/api/supabase/config', (req, res) => {
+  res.json({
+    supabaseUrl: SUPABASE_URL,
+    supabaseAnonKey: SUPABASE_ANON_KEY,
+    projectId: 'kxmlkcqjjfefmaoaftab',
+    dashboardUrl: 'https://supabase.com/dashboard/project/kxmlkcqjjfefmaoaftab',
+  });
+});
+
+app.get('/api/protected/me', requireSupabaseAuth, (req, res) => {
+  res.json({
+    authenticated: true,
+    user: req.supabaseUser,
+    message: 'Access granted to protected Supabase user profile'
+  });
+});
+
+app.get('/api/protected/database', requireSupabaseAuth, (req, res) => {
+  const challenges = db.getAllChallenges();
+  const stats = db.getStats();
+  res.json({
+    protected: true,
+    user: req.supabaseUser?.email,
+    stats,
+    challenges
+  });
 });
 
 // ─── Unstop Login, Logout & Account Connection Endpoints ──────────────────────

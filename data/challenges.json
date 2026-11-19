@@ -245,9 +245,9 @@
       "day": 21,
       "title": "Day 21: Backtracking: N-Queens & Sudoku Solver",
       "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
+      "status": "solved",
+      "reminded_at": "2026-11-16T18:55:18.648675+05:30",
+      "solved_at": "2026-11-16T18:55:34.322724+05:30",
       "created_at": "2026-10-27T00:00:00.000Z",
       "assigned_date": "2026-11-16",
       "missed_at": null
@@ -255,11 +255,11 @@
     {
       "id": 22,
       "day": 22,
-      "title": "Day 22: Segment Tree & Range Queries",
-      "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
+      "title": "Day 22: Practice Problem #672462",
+      "link": "https://unstop.com/code/practice/672462",
+      "status": "solved",
+      "reminded_at": "2026-11-17T10:30:54.914300+05:30",
+      "solved_at": "2026-11-17T10:31:48.647395+05:30",
       "created_at": "2026-10-27T00:00:00.000Z",
       "assigned_date": "2026-11-17",
       "missed_at": null
@@ -269,9 +269,9 @@
       "day": 23,
       "title": "Day 23: Disjoint Set Union (DSU) & Kruskal's MST",
       "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
+      "status": "solved",
+      "reminded_at": "2026-11-18T13:32:42.334607+05:30",
+      "solved_at": "2026-11-18T17:23:18.569548+05:30",
       "created_at": "2026-10-27T00:00:00.000Z",
       "assigned_date": "2026-11-18",
       "missed_at": null
@@ -281,9 +281,9 @@
       "day": 24,
       "title": "Day 24: Dynamic Programming: 1D Fibonacci & House Robber",
       "link": "https://unstop.com/practice/coding",
-      "status": "upcoming",
-      "reminded_at": null,
-      "solved_at": null,
+      "status": "solved",
+      "reminded_at": "2026-11-19T11:26:26.616335+05:30",
+      "solved_at": "2026-11-19T11:27:00.209093+05:30",
       "created_at": "2026-10-27T00:00:00.000Z",
       "assigned_date": "2026-11-19",
       "missed_at": null
@@ -438,7 +438,7 @@
   "settings": {
     "vapid_public": "BEkJiWkYZt3cbogZU3vUJ9XoozgZuO1dZ0Hp2UdOplJAmtbAbpbxq9pXW_DT0vvi8RZKKyKn9XMSHRNg6j4sdpI",
     "vapid_private": "vwbhT59yt85TIgT8UGqAQIdJevuVioGk-L0YTMPdykc",
-    "best_streak": 20,
+    "best_streak": 24,
     "notify_on_complete": false,
     "streak_breaks": [],
     "last_broken_streak": null,
@@ -452,7 +452,7 @@
     "unstop_auth_email": "animesh.goswami045@gmail.com",
     "unstop_auth_at": "2026-10-29T12:56:05.698212+05:30",
     "archived_runs": [],
-    "streak": 20,
-    "data_version": 2026111505
+    "streak": 24,
+    "data_version": 2026111506
   }
 }
